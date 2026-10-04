@@ -1,0 +1,6 @@
+{
+  "name": "GreenLens",
+  "description": "Aplicación de reconocimiento visual botánico con identificación botánica y cuidados inteligentes.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
