@@ -159,6 +159,18 @@ export const PlantHealthView: React.FC<PlantHealthViewProps> = ({ onBack, recent
         symptoms: symptoms.trim() || undefined,
         photoAngles: slots.map((s) => s.angleLabel)
       });
+
+      const isNonPlant =
+        res?.isPlant === false ||
+        res?.healthStatus === 'unknown' ||
+        /no se ha identificado|no s'ha identificat|no plant identified|not a plant|لم يتم/i.test(res?.overallAdvice || res?.summary || '');
+
+      if (isNonPlant) {
+        setGeneralError(res?.overallAdvice || res?.summary || t('notAPlant.message'));
+        setResult(null);
+        return;
+      }
+
       setResult(res);
     } catch (err: any) {
       console.error('[GreenLens: PlantHealth error]', err);

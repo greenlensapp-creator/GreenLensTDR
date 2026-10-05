@@ -93,6 +93,18 @@ export const CareGuideView: React.FC<CareGuideViewProps> = ({ onBack, recentScan
         plantName: plantName.trim(),
         imageBase64: photoPreview || undefined
       });
+
+      const isNonPlant =
+        res?.isPlant === false ||
+        /no se ha identificado|no s'ha identificat|no plant identified|not a plant|لم يتم/i.test(res?.plantName || '');
+
+      if (isNonPlant) {
+        const msg = (typeof res?.watering === 'object' && res?.watering?.tips) || res?.commonMistakes?.[0] || t('notAPlant.message');
+        setError(msg);
+        setGuide(null);
+        return;
+      }
+
       setGuide(res);
     } catch (err: any) {
       setError(t('guide.analysisError'));

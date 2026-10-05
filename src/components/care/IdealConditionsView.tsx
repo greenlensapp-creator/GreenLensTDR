@@ -72,6 +72,17 @@ export const IdealConditionsView: React.FC<IdealConditionsViewProps> = ({
       };
 
       const res = await analyzeIdealConditions(request);
+
+      const isNonPlant =
+        res?.isPlant === false ||
+        /no se ha identificado|no s'ha identificat|no plant identified|not a plant|لم يتم/i.test(res?.summary || '');
+
+      if (isNonPlant) {
+        setError(res?.summary || res?.light?.notes || t('notAPlant.message'));
+        setResult(null);
+        return;
+      }
+
       setResult(res);
     } catch (err: any) {
       console.error('[GreenLens: IdealConditions error]', err);
@@ -114,6 +125,17 @@ export const IdealConditionsView: React.FC<IdealConditionsViewProps> = ({
       };
 
       const res = await analyzeIdealConditions(request);
+
+      const isNonPlant =
+        res?.isPlant === false ||
+        /no se ha identificado|no s'ha identificat|no plant identified|not a plant|لم يتم/i.test(res?.summary || '');
+
+      if (isNonPlant) {
+        setError(res?.summary || res?.light?.notes || t('notAPlant.message'));
+        setResult(null);
+        return;
+      }
+
       setResult(res);
     } catch (err: any) {
       setError(t('conditions.analysisError'));

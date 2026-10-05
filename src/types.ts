@@ -137,6 +137,7 @@ export interface WateringCalcRequest {
 }
 
 export interface WateringCalcResponse {
+  isPlant?: boolean;
   plantName?: string;
   wateringFrequency: string;
   wateringAmount: string;
@@ -165,6 +166,7 @@ export interface ConditionFactorAssessment {
 }
 
 export interface ConditionsResponse {
+  isPlant?: boolean;
   rating: 'Adecuado' | 'Mejorable' | 'No recomendado' | string;
   ratingScore: 'green' | 'yellow' | 'red';
   temperatureAssessment: ConditionFactorAssessment;
@@ -172,6 +174,8 @@ export interface ConditionsResponse {
   lightAssessment: ConditionFactorAssessment;
   soilAssessment: ConditionFactorAssessment;
   recommendations: string[];
+  summary?: string;
+  light?: { type?: string; hoursPerDay?: number; notes?: string };
 }
 
 export interface CareGuideRequest {
@@ -180,6 +184,7 @@ export interface CareGuideRequest {
 }
 
 export interface CareGuideResponse {
+  isPlant?: boolean;
   name?: string;
   plantName?: string;
   scientificName?: string;
@@ -205,15 +210,19 @@ export interface PlantHealthRequest {
 }
 
 export interface PlantHealthResponse {
-  statusLevel: 'healthy' | 'warning' | 'alert';
-  statusLabel: string;
-  summary: string;
-  possibleIssues: string[];
-  possibleCauses: string[];
-  wateringEvaluation: string;
-  lightEvaluation: string;
-  temperatureEvaluation: string;
-  recommendations: string[];
+  isPlant?: boolean;
+  healthStatus?: 'healthy' | 'warning' | 'critical' | 'unknown' | string;
+  statusLevel?: 'healthy' | 'warning' | 'alert' | string;
+  statusLabel?: string;
+  summary?: string;
+  overallAdvice?: string;
+  issues?: any[];
+  possibleIssues?: string[];
+  possibleCauses?: string[];
+  wateringEvaluation?: string;
+  lightEvaluation?: string;
+  temperatureEvaluation?: string;
+  recommendations?: string[];
 }
 
 export interface LightMeterResponse {

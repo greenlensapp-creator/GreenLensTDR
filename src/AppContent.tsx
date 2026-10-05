@@ -106,14 +106,14 @@ export default function AppContent() {
     const isPlant =
       result.details?.isPlant !== false &&
       (result.topPrediction?.percentage ?? 0) > 0 &&
-      !/no parece ser una planta|no es una planta|objeto no bot|does not appear to be a plant|not a plant|no sembla ser una planta|لا يبدو/i.test(result.details?.name || '');
+      !/no parece ser una planta|no es una planta|objeto no bot|does not appear to be a plant|not a plant|no sembla ser una planta|no se ha identificado|no s'ha identificat|no plant identified|لم يتم/i.test(result.details?.name || '');
 
     if (!isPlant) {
       setAnalyzingImage(null);
       setCurrentResult(null);
       setNotAPlantState({
         image: result.capturedImage || null,
-        title: result.details?.name && !/no parece ser una planta|does not appear to be a plant|no sembla ser una planta|لا يبدو/i.test(result.details.name) ? result.details.name : undefined,
+        title: result.details?.name && !/no parece ser una planta|does not appear to be a plant|no sembla ser una planta|no se ha identificado|no s'ha identificat|no plant identified|لم يتم/i.test(result.details.name) ? result.details.name : undefined,
         message: result.details?.identificationMessage || result.details?.description
       });
       return;

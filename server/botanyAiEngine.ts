@@ -945,7 +945,19 @@ function buildGroqMessages(request: GroqApiRequestPayload): { system: string; us
     case 'plant_identification': {
       const { imageBase64 } = request.payload;
       const system = `You are a world-class botanical expert for GreenLens.
-Analyze the image and identify the plant species, generating a compact technical card.
+Analyze the image and determine whether an identifiable plant, flower, tree, succulent, cactus, shrub, or botanical element is clearly present.
+
+CRITICAL BOTANICAL VERIFICATION:
+- If the image contains a clear, identifiable plant, set "isPlant": true, identify the species accurately, and generate the technical card.
+- If the image does NOT contain an identifiable plant (e.g. human, animal, food, vehicle, furniture, household object, blank/blurry non-botanical photo), you MUST set:
+  "isPlant": false,
+  "name": "No se ha identificado ninguna planta" (strictly translated to ${targetLangName}),
+  "scientificName": "N/A",
+  "confidencePercentage": 0,
+  "isCertain": false,
+  "category": "N/A",
+  "family": "N/A",
+  "description": "message in ${targetLangName} clearly stating that no plant was identified in the image".
 
 ${baseJsonRule}
 
@@ -953,41 +965,41 @@ STRICT LANGUAGE RULE: Every text value in the JSON MUST be in ${targetLangName}.
 
 Return EXACTLY this JSON structure with concise values (1 to 4 words per field):
 {
-  "isPlant": boolean, // true if plant/flower/tree/cactus/succulent; false otherwise
-  "name": string, // Common name strictly in ${targetLangName}
-  "scientificName": string, // Latin scientific binomial name
-  "confidencePercentage": number, // 0 to 100
-  "isCertain": boolean, // true if confidencePercentage >= 70
-  "category": string, // Category in ${targetLangName} (e.g. "Indoor ornamental", "Aromàtica d'interior", "زينة داخلية")
-  "family": string, // Botanical family (e.g. "Araceae")
-  "description": string, // Single visual descriptive sentence of 10 to 15 words max in ${targetLangName}
-  "origin": string, // Origin region in 1-3 words in ${targetLangName} (e.g. "Central America", "Amèrica Central", "أمريكا الوسطى")
-  "naturalHabitat": string, // Short habitat in ${targetLangName} (e.g. "Tropical rainforest", "Selva tropical", "غابة استوائية")
+  "isPlant": boolean,
+  "name": string,
+  "scientificName": string,
+  "confidencePercentage": number,
+  "isCertain": boolean,
+  "category": string,
+  "family": string,
+  "description": string,
+  "origin": string,
+  "naturalHabitat": string,
   "care": {
-    "light": string, // In ${targetLangName} (e.g. "Bright indirect light", "Llum indirecta brillant", "ضوء غير مباشر ساطع")
-    "watering": string, // In ${targetLangName} (e.g. "Dry soil between waterings", "Sostrat sec entre regs", "ري عند جفاف التربة")
-    "temperature": string // In ${targetLangName} (e.g. "18-25°C, frost free", "18-25°C, sense gelades", "18-25°م، حماية من الصقيع")
+    "light": string,
+    "watering": string,
+    "temperature": string
   },
   "toxicity": {
     "isToxicToHumans": boolean,
     "isToxicToPets": boolean,
-    "details": string // In ${targetLangName} if toxic, or "" if safe
+    "details": string
   },
-  "plantType": string, // In ${targetLangName} (e.g. "Indoor climber", "Enredadera d'interior", "متسلقة داخلية")
-  "lifeCycle": string, // In ${targetLangName} (e.g. "Perennial", "Perenne", "معمر", "Annual", "Anual", "سنوي")
+  "plantType": string,
+  "lifeCycle": string,
   "characteristics": {
-    "approximateHeight": string, // E.g. "1–3 m"
-    "leafColor": string, // In ${targetLangName} (e.g. "Dark green", "Verd fosc", "أخضر داكن")
-    "leafType": string, // In ${targetLangName} (e.g. "Large fenestrated", "Gran fenestrada", "كبيرة ومخرمة")
-    "flowerColor": string, // In ${targetLangName} (e.g. "White / Rare", "Blanca / Rara", "أبيض / نادر")
-    "plantingSeason": string // In ${targetLangName} (e.g. "Spring", "Primavera", "الربيع")
+    "approximateHeight": string,
+    "leafColor": string,
+    "leafType": string,
+    "flowerColor": string,
+    "plantingSeason": string
   }
 }`;
 
       const userContent: any[] = [
         {
           type: 'text',
-          text: `Identify the plant in this photo and return the JSON card strictly in ${targetLangName}.`
+          text: `Identify the plant in this photo and return the JSON card strictly in ${targetLangName}. If no plant is found, set isPlant: false.`
         }
       ];
 
@@ -1009,22 +1021,34 @@ Return EXACTLY this JSON structure with concise values (1 to 4 words per field):
 
     case 'plant_info': {
       const { className } = request.payload;
-      const system = `Eres un botánico experto para GreenLens.
-Proporciona la ficha botánica enciclopédica completa para la especie botánica solicitada.
-${baseJsonRule}
-Devuelve el mismo esquema JSON completo de identificación botánica (isPlant=true, name, scientificName, confidencePercentage=98, isCertain=true, category, family, origin, size, location, tags, description, care, toxicityAlert, naturalHabitat, curiosities, observedCharacteristics, possibleAlternatives).`;
+      const system = `You are a botanical expert for GreenLens.
+Evaluate the entered text: "${className}".
 
-      const userContent = `Genera la ficha botánica completa en ${targetLangName} para: "${className}".`;
+CRITICAL BOTANICAL VERIFICATION:
+- If "${className}" is a valid, recognized plant, flower, herb, tree, succulent, or cactus species, set "isPlant": true, confidencePercentage: 98, isCertain: true, and return the complete botanical card.
+- If "${className}" is NOT a recognized botanical species (e.g. animals, objects, people, food, nonsense or non-plant words), you MUST set "isPlant": false, "name": "No se ha identificado ninguna planta" (translated to ${targetLangName}), "scientificName": "N/A", "confidencePercentage": 0, "isCertain": false, "category": "N/A", "family": "N/A", "description": "message in ${targetLangName} clearly stating that no plant corresponds to that name".
+
+${baseJsonRule}
+
+STRICT LANGUAGE RULE: All text values MUST be in ${targetLangName}.`;
+
+      const userContent = `Genera la ficha botánica en ${targetLangName} para: "${className}". Si no es una planta, indica isPlant: false.`;
       return { system, user: userContent, hasImage: false };
     }
 
     case 'care_guide': {
       const { imageBase64, plantName } = request.payload;
-      const system = `Eres un experto en agronomía y botánica de GreenLens.
-Crea una guía de cuidados profesional personalizada y exhaustiva para la planta.
+      const system = `You are a botanical and agronomy expert for GreenLens.
+Create a personalized care guide.
+
+CRITICAL BOTANICAL VERIFICATION:
+- If the photo or name does NOT correspond to an identifiable plant species, return JSON with "isPlant": false, "plantName": "No se ha identificado ninguna planta" (in ${targetLangName}), "scientificName": "N/A", "watering": { "frequency": "N/A", "tips": "message in ${targetLangName}", "amount": "N/A" }, "light": { "requirement": "N/A", "placement": "N/A" }, "temperature": { "min": "N/A", "max": "N/A", "ideal": "N/A" }, "humidity": { "percentage": "N/A", "advice": "N/A" }, "soil": { "type": "N/A", "drainage": "N/A" }, "fertilizer": { "frequency": "N/A", "type": "N/A" }, "pruning": { "season": "N/A", "technique": "N/A" }, "seasonalAdvice": { "spring": "N/A", "summer": "N/A", "autumn": "N/A", "winter": "N/A" }, "commonMistakes": ["message in ${targetLangName} stating no plant was identified"].
+
 ${baseJsonRule}
+
 Devuelve un JSON con:
 {
+  "isPlant": boolean,
   "plantName": string,
   "scientificName": string,
   "watering": { "frequency": string, "tips": string, "amount": string },
@@ -1041,7 +1065,7 @@ Devuelve un JSON con:
       const userContent: any[] = [
         {
           type: 'text',
-          text: `Genera una guía de cuidados completa en ${targetLangName} para: ${plantName || 'la planta de la imagen'}.`
+          text: `Genera una guía de cuidados completa en ${targetLangName} para: ${plantName || 'la planta de la imagen'}. Si no es una planta identificable, marca isPlant: false.`
         }
       ];
 
@@ -1060,12 +1084,15 @@ Devuelve un JSON con:
 
     case 'watering_calculation': {
       const { imageBase64, plantName } = request.payload || {};
-      const system = `Botanical watering advisor. Language: ${targetLangName}. Respond ONLY with a compact JSON object with exactly these 4 keys:
-{"plantName":"name in ${targetLangName}","wateringFrequency":"approximate frequency in ${targetLangName}","wateringAmount":"approximate volume with unit (e.g. 250–350 ml)","recommendation":"one concise sentence in ${targetLangName}"}`;
+      const system = `Botanical watering advisor. Language: ${targetLangName}.
+If an identifiable plant is present in the photo or text name, respond ONLY with JSON:
+{"isPlant":true,"plantName":"name in ${targetLangName}","wateringFrequency":"approximate frequency in ${targetLangName}","wateringAmount":"approximate volume with unit (e.g. 250–350 ml)","recommendation":"one concise sentence in ${targetLangName}"}
+If NO identifiable plant is present, respond ONLY with JSON:
+{"isPlant":false,"plantName":"No se ha identificado ninguna planta" (strictly in ${targetLangName}),"wateringFrequency":"N/A","wateringAmount":"N/A","recommendation":"message in ${targetLangName} clearly stating that no plant was identified"}`;
 
       const userText = plantName
-        ? `Plant: "${plantName}". Calculate watering in ${targetLangName}. Output JSON only.`
-        : `Identify plant in photo and calculate watering in ${targetLangName}. Output JSON only.`;
+        ? `Plant: "${plantName}". Calculate watering in ${targetLangName}. If not a plant, set isPlant: false. Output JSON only.`
+        : `Identify plant in photo and calculate watering in ${targetLangName}. If not a plant, set isPlant: false. Output JSON only.`;
 
       const userContent: any[] = [
         {
@@ -1092,27 +1119,31 @@ Devuelve un JSON con:
     }
 
     case 'ideal_conditions': {
-      const system = `Eres un experto en climatología de plantas para GreenLens.
-Evalúa las condiciones ambientales ideales para la planta indicada.
+      const system = `You are a plant climatology expert for GreenLens.
+Evaluate ideal environmental conditions for the plant.
+If the input is NOT an identifiable plant, return JSON with "isPlant": false, "summary": "message in ${targetLangName} stating no plant was identified", "light": { "type": "N/A", "hoursPerDay": 0, "notes": "N/A" }, "temperature": { "min": 0, "max": 0, "optimal": 0 }, "humidity": { "min": 0, "max": 0, "optimal": 0 }, "airFlow": "N/A".
 ${baseJsonRule}
 Devuelve un JSON con:
 {
+  "isPlant": boolean,
   "light": { "type": string, "hoursPerDay": number, "notes": string },
   "temperature": { "min": number, "max": number, "optimal": number },
   "humidity": { "min": number, "max": number, "optimal": number },
   "airFlow": string,
   "summary": string
 }`;
-      return { system, user: `Evalúa las condiciones ideales para: ${JSON.stringify(request.payload)}`, hasImage: false };
+      return { system, user: `Evalúa las condiciones ideales en ${targetLangName} para: ${JSON.stringify(request.payload)}. Si no es una planta, indica isPlant: false.`, hasImage: false };
     }
 
     case 'plant_health': {
-      const system = `Eres un fitopatólogo experto de GreenLens.
-Diagnostica la salud de la planta e identifica plagas, enfermedades, carencias o excesos de riego basándote en los datos e imágenes suministradas.
+      const system = `You are an expert plant pathologist for GreenLens.
+Diagnose the health of the plant based on provided photos/info.
+If the input/images do NOT contain an identifiable plant, return JSON with "isPlant": false, "healthStatus": "unknown", "issues": [], "urgency": "none", "overallAdvice": "message in ${targetLangName} stating no plant was identified".
 ${baseJsonRule}
 Devuelve un JSON con:
 {
-  "healthStatus": "healthy" | "warning" | "critical",
+  "isPlant": boolean,
+  "healthStatus": "healthy" | "warning" | "critical" | "unknown",
   "issues": [
     {
       "name": string,
@@ -1128,7 +1159,7 @@ Devuelve un JSON con:
       const userContent: any[] = [
         {
           type: 'text',
-          text: `Diagnostica la salud botánica con esta información: ${JSON.stringify(request.payload?.plantName || '')}`
+          text: `Diagnostica la salud botánica en ${targetLangName} con esta información: ${JSON.stringify(request.payload?.plantName || '')}`
         }
       ];
 
@@ -1348,7 +1379,24 @@ export function validateBotanicalResponse(data: any): any {
     throw new BotanyAiError('INVALID_SCHEMA', 'La respuesta obtenida no es un objeto botánico válido.', 502);
   }
 
-  // Comprobar campos mínimos esperados
+  // Si isPlant es explícitamente false o si el nombre contiene "no se ha identificado ninguna planta"
+  const isExplicitlyNonPlant =
+    data.isPlant === false ||
+    /no se ha identificado ninguna planta|no s'ha identificat cap planta|no plant identified|not a plant|does not appear to be a plant|no parece ser una planta|لم يتم/i.test(data.name || '');
+
+  if (isExplicitlyNonPlant) {
+    data.isPlant = false;
+    data.name = data.name || 'No se ha identificado ninguna planta';
+    data.scientificName = data.scientificName || 'N/A';
+    data.confidencePercentage = 0;
+    data.isCertain = false;
+    data.category = data.category || 'N/A';
+    data.family = data.family || 'N/A';
+    data.description = data.description || 'No se ha identificado ninguna planta.';
+    return data;
+  }
+
+  // Comprobar campos mínimos esperados para especies botánicas válidas
   const requiredFields = ['isPlant', 'name', 'scientificName', 'confidencePercentage', 'category', 'family', 'description'];
   const missing = requiredFields.filter(f => data[f] === undefined || data[f] === null);
   
@@ -1736,15 +1784,17 @@ export async function handleWateringCalc(
 
   const rawResult = await executeGroqApiCall<any>(request, clientKey, 450);
 
-  const plantName = rawResult?.plantName || params?.plantName || 'Planta';
-  const wateringFrequency = rawResult?.wateringFrequency || rawResult?.frequency || 'Cada 5–7 días';
-  let wateringAmount = String(rawResult?.wateringAmount || rawResult?.amount || '250–350 ml').trim();
-  if (/^\d+(\s*[-–—/]\s*\d+)?$/.test(wateringAmount)) {
+  const isPlant = rawResult?.isPlant !== false;
+  const plantName = rawResult?.plantName || params?.plantName || (isPlant ? 'Planta' : 'No se ha identificado ninguna planta');
+  const wateringFrequency = rawResult?.wateringFrequency || rawResult?.frequency || (isPlant ? 'Cada 5–7 días' : 'N/A');
+  let wateringAmount = String(rawResult?.wateringAmount || rawResult?.amount || (isPlant ? '250–350 ml' : 'N/A')).trim();
+  if (isPlant && /^\d+(\s*[-–—/]\s*\d+)?$/.test(wateringAmount)) {
     wateringAmount = `${wateringAmount} ml`;
   }
-  const recommendation = rawResult?.recommendation || (Array.isArray(rawResult?.recommendations) ? rawResult.recommendations[0] : 'Comprueba la humedad del sustrato antes de volver a regar.');
+  const recommendation = rawResult?.recommendation || (Array.isArray(rawResult?.recommendations) ? rawResult.recommendations[0] : (isPlant ? 'Comprueba la humedad del sustrato antes de volver a regar.' : 'No se ha identificado ninguna planta.'));
 
   return {
+    isPlant,
     plantName,
     wateringFrequency,
     wateringAmount,

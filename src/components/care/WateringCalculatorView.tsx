@@ -90,6 +90,16 @@ export const WateringCalculatorView: React.FC<WateringCalculatorViewProps> = ({
       };
 
       const res = await calculateWateringCare(request, language);
+
+      const isNonPlant =
+        res?.isPlant === false ||
+        /no se ha identificado|no s'ha identificat|no plant identified|not a plant|لم يتم/i.test(res?.plantName || '');
+
+      if (isNonPlant) {
+        setError(res?.recommendation || t('notAPlant.message'));
+        setResult(null);
+        return;
+      }
       
       // Guardar el nombre para la tarjeta de resultado antes de limpiar la entrada
       const returnedPlantName = res?.plantName || plantNameToUse || t('watering.title');

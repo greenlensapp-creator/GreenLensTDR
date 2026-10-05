@@ -167,12 +167,12 @@ export async function identifyPlantWithAi(
 
     const fallbackNonPlantName =
       language === 'en'
-        ? 'Does not appear to be a plant'
+        ? 'No plant identified'
         : language === 'ca'
-        ? 'No sembla ser una planta'
+        ? 'No s\'ha identificat cap planta'
         : language === 'ar'
-        ? 'لا يبدو أنه نبات'
-        : 'No parece ser una planta';
+        ? 'لم يتم التعرف على أي نبتة'
+        : 'No se ha identificado ninguna planta';
 
     const fallbackPlantName =
       language === 'en'
