@@ -1,9 +1,12 @@
 // netlify/functions/api.ts: Router Serverless para Netlify Functions con Groq
+import 'dotenv/config';
+
 export interface NetlifyEvent {
   httpMethod: string;
   headers: Record<string, string | undefined>;
   queryStringParameters?: Record<string, string | undefined> | null;
   body?: string | null;
+  isBase64Encoded?: boolean;
   path?: string;
 }
 
@@ -47,12 +50,20 @@ export const handler = async (event: NetlifyEvent, context?: any): Promise<Netli
     };
   }
 
-  let route = '';
   let body: any = {};
+  let rawBody = event.body || '';
 
-  if (event.body) {
+  if (rawBody && event.isBase64Encoded) {
     try {
-      body = JSON.parse(event.body);
+      rawBody = Buffer.from(rawBody, 'base64').toString('utf-8');
+    } catch (e) {
+      console.warn('[Netlify Function] Error decodificando body base64:', e);
+    }
+  }
+
+  if (rawBody) {
+    try {
+      body = JSON.parse(rawBody);
     } catch {
       body = {};
     }
@@ -62,19 +73,23 @@ export const handler = async (event: NetlifyEvent, context?: any): Promise<Netli
     return event.headers[name.toLowerCase()] || event.headers[name];
   };
 
-  if (event.queryStringParameters?.route) {
-    route = '/' + event.queryStringParameters.route.replace(/^\/+/, '');
-  } else if (body._route) {
-    route = '/' + String(body._route).replace(/^\/+/, '');
-  } else if (getHeader('x-target-route')) {
-    route = '/' + String(getHeader('x-target-route')).replace(/^\/+/, '');
-  } else if (getHeader('x-greenlens-route')) {
-    route = '/' + String(getHeader('x-greenlens-route')).replace(/^\/+/, '');
+  let route = '';
+  const queryRoute = event.queryStringParameters?.route;
+  const headerRoute = getHeader('x-target-route') || getHeader('x-greenlens-route');
+  const bodyRoute = body?._route;
+
+  if (queryRoute) {
+    route = '/' + queryRoute.replace(/^\/+/, '');
+  } else if (headerRoute) {
+    route = '/' + String(headerRoute).replace(/^\/+/, '');
+  } else if (bodyRoute) {
+    route = '/' + String(bodyRoute).replace(/^\/+/, '');
   } else if (event.path) {
     const cleanPath = event.path
-      .replace('/.netlify/functions/api', '')
-      .replace('/api', '');
-    route = cleanPath ? (cleanPath.startsWith('/') ? cleanPath : `/${cleanPath}`) : '/health';
+      .replace(/^\/\.netlify\/functions\/api\/?/, '')
+      .replace(/^\/api\/?/, '')
+      .replace(/^\/+/, '');
+    route = cleanPath ? `/${cleanPath}` : '/health';
   } else {
     route = '/health';
   }
@@ -177,6 +192,21 @@ export const handler = async (event: NetlifyEvent, context?: any): Promise<Netli
     };
   } catch (err: any) {
     if (err instanceof BotanyAiError) {
+      if (err.code === 'GROQ_VISION_RATE_LIMITED') {
+        return {
+          statusCode: err.statusCode || 429,
+          headers: responseHeaders,
+          body: JSON.stringify({
+            error: true,
+            code: 'GROQ_VISION_RATE_LIMITED',
+            message: sanitizeErrorMessage(err.message),
+            retryAfterMs: err.details?.retryAfterMs || 30000,
+            availableVisionModels: err.details?.availableVisionModels || [],
+            isAiConfigured: isConfigured
+          })
+        };
+      }
+
       return {
         statusCode: err.statusCode || 500,
         headers: responseHeaders,

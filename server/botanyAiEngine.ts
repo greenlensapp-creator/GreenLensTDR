@@ -59,7 +59,7 @@ export function getSanitizedGroqApiKey(overrideKey?: string): string | undefined
   }
 
   const env = process.env || {};
-  const raw = env.GROQ_API_KEY;
+  const raw = env.GROQ_API_KEY || env.groq_api_key || env.Groq_Api_Key;
 
   if (!raw || typeof raw !== 'string') return undefined;
 
@@ -127,22 +127,29 @@ export interface RateLimitCooldown {
 import fs from 'fs';
 import path from 'path';
 
-const COOLDOWN_FILE = path.join(process.cwd(), '.groq_cooldowns.json');
+function getCooldownFilePath(): string {
+  if (process.env.NETLIFY || process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.LAMBDA_TASK_ROOT) {
+    return path.join('/tmp', '.groq_cooldowns.json');
+  }
+  return path.join(process.cwd(), '.groq_cooldowns.json');
+}
 
 function persistCooldownsToFile(): void {
   try {
+    const filePath = getCooldownFilePath();
     const data = Array.from(modelCooldowns.entries());
-    fs.writeFileSync(COOLDOWN_FILE, JSON.stringify(data, null, 2), 'utf-8');
+    fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf-8');
   } catch (err) {
-    console.warn('[Groq] No se pudo guardar la caché de cooldowns en disco:', err);
+    // En entornos serverless o de solo lectura, la persistencia en memoria local es suficiente
   }
 }
 
 function loadCooldownsFromFile(): Map<string, RateLimitCooldown> {
   const map = new Map<string, RateLimitCooldown>();
   try {
-    if (fs.existsSync(COOLDOWN_FILE)) {
-      const raw = fs.readFileSync(COOLDOWN_FILE, 'utf-8');
+    const filePath = getCooldownFilePath();
+    if (fs.existsSync(filePath)) {
+      const raw = fs.readFileSync(filePath, 'utf-8');
       const entries = JSON.parse(raw);
       const now = Date.now();
       if (Array.isArray(entries)) {
@@ -154,7 +161,7 @@ function loadCooldownsFromFile(): Map<string, RateLimitCooldown> {
       }
     }
   } catch (err) {
-    console.warn('[Groq] No se pudo leer la caché de cooldowns de disco:', err);
+    // Ignorar si no existe archivo previo
   }
   return map;
 }
