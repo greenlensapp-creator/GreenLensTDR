@@ -1,8 +1,8 @@
 import React, { useState, useRef } from 'react';
-import { ScanHistoryItem, PlantHealthResponse } from '../../types';
+import { ScanHistoryItem, PlantHealthRequest, PlantHealthResponse, ImageValidationResult } from '../../types';
 import { useTranslation } from '../../i18n/LanguageContext';
-import { getLocalizedSpeciesName, getLocalizedScientificName } from '../../services/speciesLocalization';
-import { validateImageForCare, checkImagesSimilarity } from '../../services/imageValidationService';
+import { getLocalizedSpeciesName } from '../../services/speciesLocalization';
+import { validateImageForCare } from '../../services/imageValidationService';
 import { processImageFile } from '../../services/imageProcessingService';
 import { analyzePlantHealth } from '../../services/careToolsService';
 import { CareCameraModal } from './CareCameraModal';
@@ -12,126 +12,55 @@ interface PlantHealthViewProps {
   recentScans: ScanHistoryItem[];
 }
 
-interface PhotoSlot {
-  titleKey: string;
-  descKey: string;
-  angleLabel: string;
-  dataUrl: string | null;
-  isValid: boolean;
-  errorMessage: string | null;
-}
-
-export const PlantHealthView: React.FC<PlantHealthViewProps> = ({ onBack, recentScans }) => {
+export const PlantHealthView: React.FC<PlantHealthViewProps> = ({
+  onBack,
+  recentScans
+}) => {
   const { t, language } = useTranslation();
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const galleryInputRef = useRef<HTMLInputElement>(null);
-  const [activeSlotIndex, setActiveSlotIndex] = useState<number | null>(null);
-  const [isCameraOpen, setIsCameraOpen] = useState<boolean>(false);
 
+  const [isCameraOpen, setIsCameraOpen] = useState<boolean>(false);
   const [selectedPlant, setSelectedPlant] = useState<string>('');
   const [customPlant, setCustomPlant] = useState<string>('');
-  const [symptoms, setSymptoms] = useState<string>('');
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const [, setValidationResult] = useState<ImageValidationResult | null>(null);
+  const [validationError, setValidationError] = useState<string | null>(null);
 
-  const [slots, setSlots] = useState<PhotoSlot[]>([
-    {
-      titleKey: 'health.photo1Title',
-      descKey: 'health.photo1Desc',
-      angleLabel: 'Vista general',
-      dataUrl: null,
-      isValid: false,
-      errorMessage: null
-    },
-    {
-      titleKey: 'health.photo2Title',
-      descKey: 'health.photo2Desc',
-      angleLabel: 'Hojas / Detalle',
-      dataUrl: null,
-      isValid: false,
-      errorMessage: null
-    },
-    {
-      titleKey: 'health.photo3Title',
-      descKey: 'health.photo3Desc',
-      angleLabel: 'Otro ángulo / Tallos',
-      dataUrl: null,
-      isValid: false,
-      errorMessage: null
-    }
-  ]);
-
-  const [similarityWarning, setSimilarityWarning] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [result, setResult] = useState<PlantHealthResponse | null>(null);
-  const [generalError, setGeneralError] = useState<string | null>(null);
+  const [calculatedPlantName, setCalculatedPlantName] = useState<string>('');
+  const [error, setError] = useState<string | null>(null);
 
-  const effectivePlantName = customPlant.trim() || selectedPlant || t('health.defaultPlantName');
+  const effectivePlantName = customPlant.trim() || selectedPlant || undefined;
 
-  const allPhotosValid = slots.every((slot) => slot.dataUrl !== null && slot.isValid);
-  const validPhotosCount = slots.filter((slot) => slot.dataUrl !== null && slot.isValid).length;
+  const handleSelectPhoto = async (file: File, precomputedDataUrl?: string) => {
+    if (!file || isLoading) return;
 
-  const handleOpenSlot = (index: number, mode: 'camera' | 'gallery') => {
-    setActiveSlotIndex(index);
-    if (mode === 'camera') {
-      setIsCameraOpen(true);
-    } else {
-      galleryInputRef.current?.click();
-    }
-  };
-
-  const handleProcessSlotImage = async (file: File, precomputedDataUrl?: string) => {
-    if (!file || activeSlotIndex === null) return;
-    const slotIndex = activeSlotIndex;
+    setValidationError(null);
+    setError(null);
 
     try {
       const dataUrl = precomputedDataUrl || (await processImageFile(file));
+      setPhotoPreview(dataUrl);
 
-      // Validación estricta en tiempo real de la imagen
       const val = await validateImageForCare(dataUrl);
+      setValidationResult(val);
 
-      let slotError: string | null = null;
       if (!val.isValid) {
-        if (slotIndex === 0) {
-          slotError = t('validation.photo1NotPlant');
-        } else if (slotIndex === 1) {
-          slotError = t('validation.photo2NotPlant');
-        } else {
-          slotError = t('validation.photo3NotPlant');
-        }
-      }
-
-      setSlots((prev) => {
-        const next = [...prev];
-        next[slotIndex] = {
-          ...next[slotIndex],
-          dataUrl,
-          isValid: val.isValid,
-          errorMessage: slotError
-        };
-        return next;
-      });
-
-      // Comprobar similitud de ángulos si hay al menos 2 fotos
-      const currentUrls = slots
-        .map((s, idx) => (idx === slotIndex ? dataUrl : s.dataUrl))
-        .filter(Boolean) as string[];
-
-      if (currentUrls.length >= 2) {
-        const sim = await checkImagesSimilarity(currentUrls);
-        if (sim.isTooSimilar) {
-          setSimilarityWarning(t('validation.photosTooSimilar'));
-        } else {
-          setSimilarityWarning(null);
-        }
+        const errKey = val.errorMessageKey || 'validation.notAPlant';
+        setValidationError(t(errKey as any));
       }
     } catch (err: any) {
-      console.error('[GreenLens: Slot image processing error]', err);
+      console.error('[PlantHealth] Error procesando imagen:', err);
+      setValidationError(t('care.error.analysisFailed'));
     }
   };
 
   const handleCameraChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      handleProcessSlotImage(file);
+      handleSelectPhoto(file);
     }
     e.target.value = '';
   };
@@ -139,97 +68,81 @@ export const PlantHealthView: React.FC<PlantHealthViewProps> = ({ onBack, recent
   const handleGalleryChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      handleProcessSlotImage(file);
+      handleSelectPhoto(file);
     }
     e.target.value = '';
   };
 
-  const handleAnalyze = async () => {
-    if (!allPhotosValid || isLoading) return;
+  const handleCalculateManual = async () => {
+    if (isLoading) return;
+    const plantNameToUse = effectivePlantName || '';
+    if (!photoPreview && !plantNameToUse) return;
 
-    setIsLoading(true);
-    setGeneralError(null);
     setResult(null);
+    setError(null);
+    setValidationError(null);
+    setIsLoading(true);
 
     try {
-      const imagesList = slots.map((s) => s.dataUrl).filter(Boolean) as string[];
-      const res = await analyzePlantHealth({
-        images: imagesList,
-        plantName: effectivePlantName,
-        symptoms: symptoms.trim() || undefined,
-        photoAngles: slots.map((s) => s.angleLabel)
-      });
+      const request: PlantHealthRequest = {
+        plantName: plantNameToUse || undefined,
+        imageBase64: photoPreview || undefined,
+        images: photoPreview ? [photoPreview] : []
+      };
+
+      const res = await analyzePlantHealth(request, language);
 
       const isNonPlant =
         res?.isPlant === false ||
-        res?.healthStatus === 'unknown' ||
-        /no se ha identificado|no s'ha identificat|no plant identified|not a plant|لم يتم/i.test(res?.overallAdvice || res?.summary || '');
+        /no se ha identificado|no s'ha identificat|no plant identified|not a plant|لم يتم/i.test(res?.plantName || res?.problem || '');
 
       if (isNonPlant) {
-        setGeneralError(res?.overallAdvice || res?.summary || t('notAPlant.message'));
+        setError(res?.recommendation || res?.problem || t('notAPlant.message'));
         setResult(null);
         return;
       }
 
+      // Guardar el nombre para la tarjeta de resultado antes de limpiar la entrada
+      const returnedPlantName = res?.plantName || plantNameToUse || t('health.title');
+      setCalculatedPlantName(returnedPlantName);
       setResult(res);
+
+      // Limpiar ÚNICAMENTE tras una respuesta exitosa de la API
+      setCustomPlant('');
+      setSelectedPlant('');
+      setPhotoPreview(null);
+      setValidationResult(null);
+      setValidationError(null);
+      if (cameraInputRef.current) cameraInputRef.current.value = '';
+      if (galleryInputRef.current) galleryInputRef.current.value = '';
     } catch (err: any) {
       console.error('[GreenLens: PlantHealth error]', err);
-      setGeneralError(t('health.analysisError'));
+      setError(t('care.error.analysisFailed'));
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleReset = () => {
-    setSelectedPlant('');
-    setCustomPlant('');
-    setSymptoms('');
-    setSlots([
-      {
-        titleKey: 'health.photo1Title',
-        descKey: 'health.photo1Desc',
-        angleLabel: 'Vista general',
-        dataUrl: null,
-        isValid: false,
-        errorMessage: null
-      },
-      {
-        titleKey: 'health.photo2Title',
-        descKey: 'health.photo2Desc',
-        angleLabel: 'Hojas / Detalle',
-        dataUrl: null,
-        isValid: false,
-        errorMessage: null
-      },
-      {
-        titleKey: 'health.photo3Title',
-        descKey: 'health.photo3Desc',
-        angleLabel: 'Otro ángulo / Tallos',
-        dataUrl: null,
-        isValid: false,
-        errorMessage: null
-      }
-    ]);
-    setResult(null);
-    setSimilarityWarning(null);
-    setGeneralError(null);
+  const handleResetPhoto = () => {
+    setPhotoPreview(null);
+    setValidationResult(null);
+    setValidationError(null);
+    if (cameraInputRef.current) cameraInputRef.current.value = '';
+    if (galleryInputRef.current) galleryInputRef.current.value = '';
   };
 
   return (
     <div className="space-y-6 pb-28">
-      {/* Care Camera Modal */}
+      {/* Live Camera Modal */}
       <CareCameraModal
         isOpen={isCameraOpen}
         onClose={() => setIsCameraOpen(false)}
-        onCapture={(dataUrl, file) => {
+        onCapture={(file, dataUrl) => {
           setIsCameraOpen(false);
-          handleProcessSlotImage(file, dataUrl);
+          handleSelectPhoto(file, dataUrl);
         }}
-        onFallbackToGallery={() => {
-          setIsCameraOpen(false);
-          galleryInputRef.current?.click();
-        }}
-        title={t('health.cameraBtn')}
+        onFallbackToGallery={() => galleryInputRef.current?.click()}
+        title={t('health.title')}
       />
 
       {/* Hidden inputs para cámara y galería */}
@@ -252,7 +165,7 @@ export const PlantHealthView: React.FC<PlantHealthViewProps> = ({ onBack, recent
       {/* Top navigation */}
       <button
         onClick={onBack}
-        className="inline-flex items-center gap-2 text-sm font-semibold text-[#006b5e] hover:text-[#005046] transition-colors"
+        className="inline-flex items-center gap-2 text-sm font-semibold text-[#006b5e] hover:text-[#005046] transition-colors cursor-pointer"
       >
         <span className="material-symbols-outlined text-lg">arrow_back</span>
         <span>{t('care.tool.backToHub')}</span>
@@ -265,236 +178,196 @@ export const PlantHealthView: React.FC<PlantHealthViewProps> = ({ onBack, recent
             <span className="material-symbols-outlined text-2xl">health_and_safety</span>
           </div>
           <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-lg font-bold text-[#191c1d]">{t('health.title')}</h1>
-              <span className="text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 whitespace-nowrap">
-                {t('health.threePhotosBadge')}
-              </span>
-            </div>
+            <h1 className="text-lg font-bold text-[#191c1d]">{t('health.title')}</h1>
             <p className="text-xs text-[#526360]">{t('health.desc')}</p>
           </div>
         </div>
       </div>
 
-      {/* Reference Plant & Symptoms */}
-      <div className="bg-white rounded-2xl p-5 border border-[#e1e3e4] space-y-4">
-        <div className="space-y-1.5">
-          <label className="block text-xs font-bold uppercase tracking-wider text-[#526360]">
-            {t('watering.plant')}
-          </label>
-          {recentScans.length > 0 && (
-            <select
-              value={selectedPlant}
-              onChange={(e) => {
-                setSelectedPlant(e.target.value);
-                setCustomPlant('');
-              }}
-              className="w-full text-xs bg-[#f8fafb] border border-[#dce0e0] rounded-xl px-3.5 py-2.5 text-[#191c1d] focus:ring-2 focus:ring-[#006b5e]"
-            >
-              {recentScans.map((scan) => (
-                <option key={scan.id} value={scan.name}>
-                  {getLocalizedSpeciesName(scan.name, t, language)} ({getLocalizedScientificName(scan.scientificName, language) || scan.category})
-                </option>
-              ))}
-            </select>
-          )}
-          <input
-            type="text"
-            value={customPlant}
-            onChange={(e) => setCustomPlant(e.target.value)}
-            placeholder={t('care.plantPlaceholder')}
-            className="w-full text-xs bg-[#f8fafb] border border-[#dce0e0] rounded-xl px-3.5 py-2.5 text-[#191c1d] focus:ring-2 focus:ring-[#006b5e]"
-          />
-        </div>
-
-        <div className="space-y-1.5">
-          <label className="block text-xs font-bold text-[#526360]">
-            {t('health.symptomsLabel')}
-          </label>
-          <input
-            type="text"
-            value={symptoms}
-            onChange={(e) => setSymptoms(e.target.value)}
-            placeholder={t('health.symptomsPlaceholder')}
-            className="w-full text-xs bg-[#f8fafb] border border-[#dce0e0] rounded-xl px-3.5 py-2.5 text-[#191c1d] focus:ring-2 focus:ring-[#006b5e]"
-          />
-        </div>
-      </div>
-
-      {/* 3 Photos Section */}
-      <div className="bg-white rounded-2xl p-5 border border-[#e1e3e4] space-y-4">
-        <div className="flex items-center justify-between gap-2">
-          <div className="space-y-0.5">
-            <h2 className="text-xs font-bold uppercase tracking-wider text-[#191c1d]">
-              {t('health.photosRequired')}
+      {/* Photo capture or upload */}
+      {!photoPreview ? (
+        <div className="bg-white rounded-2xl p-6 border-2 border-dashed border-[#c5c8c7] hover:border-[#006b5e] transition-colors text-center space-y-4">
+          <div className="w-16 h-16 rounded-full bg-rose-50 text-rose-600 flex items-center justify-center mx-auto">
+            <span className="material-symbols-outlined text-3xl">add_a_photo</span>
+          </div>
+          <div className="space-y-1">
+            <h2 className="text-sm font-bold text-[#191c1d]">
+              {t('watering.photoTitle')}
             </h2>
-            <p className="text-[11px] text-[#526360]">{t('health.intro')}</p>
+            <p className="text-xs text-[#526360] max-w-xs mx-auto">
+              {t('watering.photoDesc')}
+            </p>
           </div>
-          <span className="text-xs font-bold px-3 py-1 rounded-full bg-emerald-50 text-[#006b5e] border border-emerald-200 whitespace-nowrap flex-shrink-0">
-            {validPhotosCount} / 3
-          </span>
-        </div>
-
-        {/* 3 Photo Slots */}
-        <div className="space-y-3">
-          {slots.map((slot, index) => (
-            <div
-              key={index}
-              className={`rounded-2xl p-4 border transition-all ${
-                slot.isValid
-                  ? 'border-emerald-200 bg-emerald-50/30'
-                  : slot.errorMessage
-                  ? 'border-rose-200 bg-rose-50/40'
-                  : 'border-[#e1e3e4] bg-[#f8fafb]'
-              }`}
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
+            <button
+              id="health-take-photo-btn"
+              disabled={isLoading}
+              onClick={() => setIsCameraOpen(true)}
+              className="w-full sm:w-auto px-5 py-3 rounded-xl bg-gradient-to-r from-rose-600 to-red-700 text-white text-xs font-bold hover:shadow-md active:scale-95 transition-all inline-flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
             >
-              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="w-5 h-5 rounded-full bg-[#006b5e] text-white text-[11px] font-bold flex items-center justify-center flex-shrink-0">
-                      {index + 1}
-                    </span>
-                    <h3 className="text-xs font-bold text-[#191c1d]">
-                      {t(slot.titleKey as any)}
-                    </h3>
-                  </div>
-                  <p className="text-[11px] text-[#526360] mt-1">
-                    {t(slot.descKey as any)}
-                  </p>
-                </div>
+              <span className="material-symbols-outlined text-base">photo_camera</span>
+              <span>{t('watering.takePhotoBtn')}</span>
+            </button>
+            <button
+              id="health-gallery-btn"
+              disabled={isLoading}
+              onClick={() => galleryInputRef.current?.click()}
+              className="w-full sm:w-auto px-5 py-3 rounded-xl bg-white border border-rose-600 text-rose-700 text-xs font-bold hover:bg-rose-50 active:scale-95 transition-all inline-flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
+            >
+              <span className="material-symbols-outlined text-base">photo_library</span>
+              <span>{t('watering.galleryBtn')}</span>
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="bg-white rounded-2xl p-4 border border-[#e1e3e4] space-y-3">
+          <div className="relative rounded-xl overflow-hidden aspect-video bg-black/5 max-h-56 flex items-center justify-center">
+            <img
+              src={photoPreview}
+              alt="Planta para análisis de problemas"
+              className="w-full h-full object-cover"
+            />
+            {!isLoading && (
+              <button
+                onClick={handleResetPhoto}
+                className="absolute top-2 right-2 p-1.5 rounded-full bg-black/60 text-white hover:bg-black/80 transition-colors cursor-pointer"
+                title={t('watering.changePhoto')}
+              >
+                <span className="material-symbols-outlined text-base">close</span>
+              </button>
+            )}
+          </div>
 
-                {/* Slot Photo Thumbnail or Add buttons */}
-                {slot.dataUrl ? (
-                  <div className="flex items-center gap-2 self-end sm:self-center">
-                    <div className="relative w-14 h-14 rounded-xl overflow-hidden bg-black/5 flex-shrink-0 border border-black/10">
-                      <img
-                        src={slot.dataUrl}
-                        alt={`Foto ${index + 1}`}
-                        className="w-full h-full object-cover"
-                      />
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <button
-                        onClick={() => handleOpenSlot(index, 'camera')}
-                        className="px-2.5 py-1 rounded-lg border border-[#006b5e] text-[#006b5e] text-[10px] font-bold hover:bg-[#006b5e]/5 transition-colors flex items-center gap-1"
-                        title={t('health.retakeCamera')}
-                      >
-                        <span className="material-symbols-outlined text-xs">photo_camera</span>
-                        <span>{t('health.cameraBtn')}</span>
-                      </button>
-                      <button
-                        onClick={() => handleOpenSlot(index, 'gallery')}
-                        className="px-2.5 py-1 rounded-lg border border-gray-300 text-[#526360] text-[10px] font-bold hover:bg-gray-50 transition-colors flex items-center gap-1"
-                        title={t('health.changeGallery')}
-                      >
-                        <span className="material-symbols-outlined text-xs">photo_library</span>
-                        <span>{t('health.galleryBtn')}</span>
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-2 self-end sm:self-center pt-1 sm:pt-0">
-                    <button
-                      onClick={() => handleOpenSlot(index, 'camera')}
-                      className="px-3 py-2 rounded-xl bg-[#006b5e] text-white text-xs font-bold hover:bg-[#005046] active:scale-95 transition-all flex items-center gap-1.5 shadow-sm whitespace-nowrap"
-                    >
-                      <span className="material-symbols-outlined text-sm">photo_camera</span>
-                      <span>{t('health.cameraBtn')}</span>
-                    </button>
-                    <button
-                      onClick={() => handleOpenSlot(index, 'gallery')}
-                      className="px-3 py-2 rounded-xl bg-white border border-[#006b5e] text-[#006b5e] text-xs font-bold hover:bg-[#006b5e]/5 active:scale-95 transition-all flex items-center gap-1.5 shadow-sm whitespace-nowrap"
-                    >
-                      <span className="material-symbols-outlined text-sm">photo_library</span>
-                      <span>{t('health.galleryBtn')}</span>
-                    </button>
-                  </div>
-                )}
-              </div>
-
-              {/* Status or Error Banner */}
-              {slot.errorMessage && (
-                <div className="mt-3 rounded-xl bg-rose-100/80 border border-rose-300 p-2.5 text-[11px] text-rose-900 flex items-start gap-2">
-                  <span className="material-symbols-outlined text-rose-600 text-sm flex-shrink-0 mt-0.5">
-                    error
-                  </span>
-                  <div className="flex-1">
-                    <p>{slot.errorMessage}</p>
-                    <div className="flex gap-2 mt-1.5">
-                      <button
-                        onClick={() => handleOpenSlot(index, 'camera')}
-                        className="px-2.5 py-1 rounded-md bg-rose-600 text-white text-[10px] font-bold hover:bg-rose-700 transition-colors inline-flex items-center gap-1"
-                      >
-                        <span className="material-symbols-outlined text-xs">photo_camera</span>
-                        <span>{t('health.cameraBtn')}</span>
-                      </button>
-                      <button
-                        onClick={() => handleOpenSlot(index, 'gallery')}
-                        className="px-2.5 py-1 rounded-md bg-white border border-rose-400 text-rose-900 text-[10px] font-bold hover:bg-rose-50 transition-colors inline-flex items-center gap-1"
-                      >
-                        <span className="material-symbols-outlined text-xs">photo_library</span>
-                        <span>{t('health.galleryBtn')}</span>
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {slot.isValid && (
-                <div className="mt-2 flex items-center gap-1.5 text-[11px] text-emerald-700 font-medium">
-                  <span className="material-symbols-outlined text-xs">check_circle</span>
-                  <span>{t('health.photoReady')}</span>
-                </div>
-              )}
+          {!isLoading && (
+            <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
+              <button
+                onClick={() => setIsCameraOpen(true)}
+                className="px-3.5 py-1.5 rounded-lg border border-rose-600/40 text-rose-700 text-xs font-semibold hover:bg-rose-50 transition-colors inline-flex items-center gap-1.5 cursor-pointer"
+              >
+                <span className="material-symbols-outlined text-sm">photo_camera</span>
+                <span>{t('watering.retakeCamera')}</span>
+              </button>
+              <button
+                onClick={() => galleryInputRef.current?.click()}
+                className="px-3.5 py-1.5 rounded-lg border border-gray-300 text-[#526360] text-xs font-semibold hover:bg-gray-50 transition-colors inline-flex items-center gap-1.5 cursor-pointer"
+              >
+                <span className="material-symbols-outlined text-sm">photo_library</span>
+                <span>{t('watering.changeGallery')}</span>
+              </button>
             </div>
-          ))}
+          )}
+
+          {validationError && (
+            <div className="rounded-xl bg-rose-50 border border-rose-200 p-3.5 space-y-2 text-left">
+              <div className="flex items-start gap-2 text-rose-800 font-semibold text-xs">
+                <span className="material-symbols-outlined text-rose-600 text-lg flex-shrink-0">
+                  error
+                </span>
+                <span>{validationError}</span>
+              </div>
+              <p className="text-[11px] text-rose-700">
+                {t('validation.notAPlantHelp')}
+              </p>
+              <div className="flex gap-2 pt-1">
+                <button
+                  onClick={() => setIsCameraOpen(true)}
+                  className="px-3 py-1.5 rounded-lg bg-rose-600 text-white text-xs font-semibold hover:bg-rose-700 transition-colors inline-flex items-center gap-1.5 cursor-pointer"
+                >
+                  <span className="material-symbols-outlined text-sm">photo_camera</span>
+                  <span>{t('watering.takePhotoBtn')}</span>
+                </button>
+                <button
+                  onClick={() => galleryInputRef.current?.click()}
+                  className="px-3 py-1.5 rounded-lg bg-white border border-rose-300 text-rose-800 text-xs font-semibold hover:bg-rose-50 transition-colors inline-flex items-center gap-1.5 cursor-pointer"
+                >
+                  <span className="material-symbols-outlined text-sm">photo_library</span>
+                  <span>{t('watering.galleryBtn')}</span>
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Manual Plant Input Selector (Exacto al Calculador de riego) */}
+      <div className="bg-white rounded-2xl p-5 border border-[#e1e3e4] space-y-4">
+        <div className="space-y-2">
+          <label className="block text-xs font-bold uppercase tracking-wider text-[#526360]">
+            {t('watering.plantSpecies')}
+          </label>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <input
+              type="text"
+              value={customPlant}
+              onChange={(e) => setCustomPlant(e.target.value)}
+              placeholder={t('watering.plantPlaceholder')}
+              className="w-full text-xs bg-[#f8fafb] border border-[#dce0e0] rounded-xl px-3.5 py-2.5 text-[#191c1d] focus:ring-2 focus:ring-[#006b5e]"
+            />
+            {recentScans.length > 0 && (
+              <select
+                value={selectedPlant}
+                onChange={(e) => {
+                  setSelectedPlant(e.target.value);
+                  setCustomPlant('');
+                }}
+                className="w-full text-xs bg-[#f8fafb] border border-[#dce0e0] rounded-xl px-3.5 py-2.5 text-[#191c1d] focus:ring-2 focus:ring-[#006b5e]"
+              >
+                <option value="">{t('watering.selectFromHistory')}</option>
+                {recentScans.map((s) => (
+                  <option key={s.id} value={s.name}>
+                    {getLocalizedSpeciesName(s.name, t)}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
         </div>
 
-        {/* Similarity Warning if angles are identical */}
-        {similarityWarning && (
-          <div className="rounded-xl bg-amber-50 border border-amber-200 p-3 text-xs text-amber-900 flex items-start gap-2">
-            <span className="material-symbols-outlined text-amber-600 text-base flex-shrink-0">
-              lightbulb
-            </span>
-            <span>{similarityWarning}</span>
-          </div>
-        )}
-
-        {/* Submit button (only enabled when all 3 photos are valid) */}
-        <button
-          id="health-analyze-btn"
-          onClick={handleAnalyze}
-          disabled={!allPhotosValid || isLoading}
-          className="w-full py-3.5 rounded-xl bg-gradient-to-r from-[#006b5e] to-[#005046] text-white text-xs font-bold shadow-md shadow-[#006b5e]/20 hover:shadow-lg active:scale-98 transition-all flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
-        >
-          {isLoading ? (
-            <>
-              <span className="material-symbols-outlined animate-spin text-base">
-                progress_activity
-              </span>
-              <span>{t('health.analyzing')}</span>
-            </>
-          ) : (
-            <>
-              <span className="material-symbols-outlined text-base">
-                health_and_safety
-              </span>
-              <span>{t('health.analyzeBtn')}</span>
-            </>
-          )}
-        </button>
+        <div className="pt-2">
+          <button
+            id="health-analyze-btn"
+            disabled={isLoading || (!photoPreview && !effectivePlantName)}
+            onClick={handleCalculateManual}
+            className="w-full py-3 rounded-xl bg-gradient-to-r from-rose-600 to-red-700 text-white text-xs font-bold hover:shadow-md active:scale-95 transition-all disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer"
+          >
+            {isLoading ? (
+              <>
+                <span className="material-symbols-outlined animate-spin text-lg">
+                  progress_activity
+                </span>
+                <span>{t('health.analyzing')}</span>
+              </>
+            ) : (
+              <>
+                <span className="material-symbols-outlined text-base">health_and_safety</span>
+                <span>{t('health.analyzeBtn')}</span>
+              </>
+            )}
+          </button>
+        </div>
       </div>
 
-      {generalError && !isLoading && (
+      {/* Loading */}
+      {isLoading && (
+        <div className="bg-white rounded-2xl p-6 border border-[#e1e3e4] flex items-center justify-center gap-3 text-xs text-rose-700 font-semibold">
+          <span className="material-symbols-outlined animate-spin text-xl">
+            progress_activity
+          </span>
+          <span>{t('health.analyzing')}</span>
+        </div>
+      )}
+
+      {/* Error with retry */}
+      {error && !isLoading && (
         <div className="rounded-xl bg-rose-50 border border-rose-200 p-4 text-xs text-rose-800 space-y-2">
           <div className="flex items-center gap-2">
             <span className="material-symbols-outlined text-rose-600">error</span>
-            <span className="font-semibold">{generalError}</span>
+            <span className="font-semibold">{error}</span>
           </div>
           <div className="pt-1">
             <button
-              onClick={handleAnalyze}
-              className="px-3 py-1.5 bg-rose-600 text-white rounded-lg font-semibold hover:bg-rose-700 transition-colors inline-flex items-center gap-1.5"
+              onClick={handleCalculateManual}
+              className="px-3 py-1.5 bg-rose-600 text-white rounded-lg font-semibold hover:bg-rose-700 transition-colors inline-flex items-center gap-1.5 cursor-pointer"
             >
               <span className="material-symbols-outlined text-sm">refresh</span>
               <span>{t('health.retry')}</span>
@@ -503,139 +376,111 @@ export const PlantHealthView: React.FC<PlantHealthViewProps> = ({ onBack, recent
         </div>
       )}
 
-      {/* Results */}
+      {/* Floating Result Modal Overlay (Exacto al estilo del Calculador de riego) */}
       {result && !isLoading && (
-        <div className="space-y-4">
-          {/* Status Header */}
-          <div className="bg-white rounded-2xl p-5 border border-[#e1e3e4] space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-[#526360]">
-                {t('health.state')}
-              </span>
-              <span
-                className={`text-xs font-bold px-3 py-1 rounded-full ${
-                  result.statusLevel === 'healthy'
-                    ? 'bg-emerald-100 text-emerald-800'
-                    : result.statusLevel === 'warning'
-                    ? 'bg-amber-100 text-amber-800'
-                    : 'bg-rose-100 text-rose-800'
-                }`}
-              >
-                {result.statusLabel}
-              </span>
-            </div>
-
-            <p className="text-xs text-[#191c1d] leading-relaxed">
-              {result.summary}
-            </p>
-          </div>
-
-          {/* Possible issues & causes */}
-          {result.possibleIssues && result.possibleIssues.length > 0 && (
-            <div className="bg-amber-50/70 border border-amber-200/80 rounded-2xl p-5 space-y-2.5">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-amber-900 flex items-center gap-2">
-                <span className="material-symbols-outlined text-amber-700 text-base">
-                  stethoscope
-                </span>
-                <span>{t('health.possibleIssues')}</span>
-              </h3>
-              <ul className="space-y-1.5">
-                {result.possibleIssues.map((issue, i) => (
-                  <li key={i} className="text-xs text-amber-950 flex items-start gap-2">
-                    <span className="material-symbols-outlined text-amber-600 text-sm flex-shrink-0 mt-0.5">
-                      arrow_right
-                    </span>
-                    <span>{issue}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          {/* Possible causes */}
-          {result.possibleCauses && result.possibleCauses.length > 0 && (
-            <div className="bg-white rounded-2xl p-5 border border-[#e1e3e4] space-y-2.5">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-[#526360] flex items-center gap-2">
-                <span className="material-symbols-outlined text-teal-600 text-base">
-                  psychology_alt
-                </span>
-                <span>{t('health.possibleCauses')}</span>
-              </h3>
-              <ul className="space-y-1.5">
-                {result.possibleCauses.map((cause, i) => (
-                  <li key={i} className="text-xs text-[#191c1d] flex items-start gap-2">
-                    <span className="material-symbols-outlined text-teal-600 text-sm flex-shrink-0 mt-0.5">
-                      arrow_right
-                    </span>
-                    <span>{cause}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          {/* Evaluations Grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div className="bg-white rounded-2xl p-4 border border-[#e1e3e4] space-y-1.5">
-              <div className="flex items-center gap-1.5 text-xs font-bold text-cyan-700">
-                <span className="material-symbols-outlined text-base">water_drop</span>
-                <span>{t('guide.watering')}</span>
-              </div>
-              <p className="text-xs text-[#191c1d] leading-relaxed">
-                {result.wateringEvaluation}
-              </p>
-            </div>
-
-            <div className="bg-white rounded-2xl p-4 border border-[#e1e3e4] space-y-1.5">
-              <div className="flex items-center gap-1.5 text-xs font-bold text-amber-700">
-                <span className="material-symbols-outlined text-base">wb_sunny</span>
-                <span>{t('guide.light')}</span>
-              </div>
-              <p className="text-xs text-[#191c1d] leading-relaxed">
-                {result.lightEvaluation}
-              </p>
-            </div>
-
-            <div className="bg-white rounded-2xl p-4 border border-[#e1e3e4] space-y-1.5">
-              <div className="flex items-center gap-1.5 text-xs font-bold text-orange-700">
-                <span className="material-symbols-outlined text-base">device_thermostat</span>
-                <span>{t('guide.temperature')}</span>
-              </div>
-              <p className="text-xs text-[#191c1d] leading-relaxed">
-                {result.temperatureEvaluation}
-              </p>
-            </div>
-          </div>
-
-          {/* Recommendations */}
-          {result.recommendations && result.recommendations.length > 0 && (
-            <div className="bg-white rounded-2xl p-5 border border-[#e1e3e4] space-y-2.5">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-[#526360] flex items-center gap-2">
-                <span className="material-symbols-outlined text-[#006b5e] text-base">
-                  tips_and_updates
-                </span>
-                <span>{t('health.recommendations')}</span>
-              </h3>
-              <ul className="space-y-1.5">
-                {result.recommendations.map((rec, i) => (
-                  <li key={i} className="text-xs text-[#191c1d] leading-relaxed flex items-start gap-2">
-                    <span className="material-symbols-outlined text-[#006b5e] text-sm flex-shrink-0 mt-0.5">
-                      check_circle
-                    </span>
-                    <span>{rec}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          <div className="pt-2 text-center">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div
+            className="relative w-full max-w-md max-h-[90vh] overflow-y-auto bg-white dark:bg-[#192b27] rounded-3xl shadow-2xl border border-[#dce0e0] dark:border-white/10 p-6 sm:p-7 space-y-5 animate-in zoom-in-95 duration-200"
+            role="dialog"
+            aria-modal="true"
+          >
+            {/* Close Button Top Right */}
             <button
-              onClick={handleReset}
-              className="text-xs text-[#526360] hover:text-[#191c1d] font-semibold underline"
+              onClick={() => setResult(null)}
+              className="absolute top-4 right-4 p-2 text-gray-400 hover:text-gray-600 dark:hover:text-white rounded-full hover:bg-gray-100 dark:hover:bg-white/10 transition-colors cursor-pointer"
+              aria-label={t('common.close') || 'Cerrar'}
             >
-              {t('health.newAnalysis')}
+              <span className="material-symbols-outlined text-xl">close</span>
             </button>
+
+            {/* Header / Plant Reference */}
+            <div className="flex items-center gap-2.5 pr-8">
+              <div className="w-9 h-9 rounded-xl bg-rose-100 dark:bg-rose-900/50 text-rose-700 dark:text-rose-300 flex items-center justify-center flex-shrink-0">
+                <span className="material-symbols-outlined text-xl">health_and_safety</span>
+              </div>
+              <div className="min-w-0">
+                <h3 className="text-sm font-bold text-[#191c1d] dark:text-white truncate">
+                  {calculatedPlantName || effectivePlantName || t('health.title')}
+                </h3>
+                <p className="text-[11px] text-[#526360] dark:text-gray-400 truncate">
+                  {t('health.desc')}
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-3.5 pt-1">
+              {/* PLANTA */}
+              <div className="bg-[#f8fafb] dark:bg-white/5 border border-[#e1e3e4] dark:border-white/10 rounded-2xl p-4 space-y-1">
+                <span className="block text-[10px] font-extrabold uppercase tracking-wider text-[#526360] dark:text-gray-400">
+                  {t('watering.plantSpecies') || 'PLANTA'}
+                </span>
+                <p className="text-lg sm:text-xl font-bold text-[#191c1d] dark:text-white capitalize">
+                  {result.plantName || calculatedPlantName || effectivePlantName || t('health.title')}
+                </p>
+              </div>
+
+              {/* 1. PROBLEMA */}
+              <div className="bg-rose-50/70 dark:bg-rose-950/30 border border-rose-200/80 dark:border-rose-900/40 rounded-2xl p-4 space-y-1">
+                <span className="block text-[11px] font-extrabold uppercase tracking-wider text-rose-800 dark:text-rose-300">
+                  {t('health.problem')}
+                </span>
+                <p className="text-base sm:text-lg font-bold text-[#191c1d] dark:text-white leading-snug">
+                  {result.problem}
+                </p>
+              </div>
+
+              {/* 2. POSIBLES CAUSAS */}
+              <div className="bg-[#f8fafb] dark:bg-white/5 border border-[#e1e3e4] dark:border-white/10 rounded-2xl p-4 space-y-1">
+                <span className="block text-[10px] font-extrabold uppercase tracking-wider text-[#526360] dark:text-gray-400">
+                  {t('health.possibleCauses')}
+                </span>
+                <p className="text-xs sm:text-sm text-gray-800 dark:text-gray-200 leading-relaxed font-medium">
+                  {result.possibleCauses}
+                </p>
+              </div>
+
+              {/* 3. SOLUCIONES */}
+              <div className="bg-emerald-50/70 dark:bg-emerald-950/30 border border-emerald-200/80 dark:border-emerald-900/40 rounded-2xl p-4 space-y-1">
+                <span className="block text-[10px] font-extrabold uppercase tracking-wider text-emerald-800 dark:text-emerald-300">
+                  {t('health.solutions')}
+                </span>
+                <p className="text-xs sm:text-sm text-[#191c1d] dark:text-gray-100 leading-relaxed font-medium">
+                  {result.solutions}
+                </p>
+              </div>
+
+              {/* 4. GRAVEDAD (PROTAGONISTA EN GRANDE) */}
+              <div className="bg-gradient-to-br from-amber-50 to-orange-100/60 dark:from-amber-950/40 dark:to-orange-900/20 border border-amber-300/80 dark:border-amber-700/50 rounded-2xl p-4 sm:p-5 space-y-1">
+                <span className="block text-[11px] font-extrabold uppercase tracking-wider text-amber-900 dark:text-amber-200">
+                  {t('health.severity')}
+                </span>
+                <p className="text-2xl sm:text-3xl font-black text-[#191c1d] dark:text-white tracking-tight">
+                  {result.severity}
+                </p>
+              </div>
+
+              {/* 5. RECOMENDACIÓN (UNA SOLA FRASE AL FINAL) */}
+              {result.recommendation && (
+                <div className="bg-[#f8fafb] dark:bg-white/5 border border-[#e1e3e4] dark:border-white/10 rounded-xl p-3.5 space-y-1">
+                  <span className="block text-[10px] font-bold uppercase tracking-wider text-[#526360] dark:text-gray-400">
+                    {t('health.recommendation')}
+                  </span>
+                  <p className="text-xs text-gray-700 dark:text-gray-300 leading-relaxed font-normal">
+                    {result.recommendation}
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Action Footer */}
+            <div className="pt-2">
+              <button
+                onClick={() => setResult(null)}
+                className="w-full py-3 rounded-xl bg-gradient-to-r from-rose-600 to-red-700 text-white text-xs font-bold shadow-md hover:shadow-lg active:scale-95 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                <span>{t('care.tool.backToHub')}</span>
+              </button>
+            </div>
           </div>
         </div>
       )}

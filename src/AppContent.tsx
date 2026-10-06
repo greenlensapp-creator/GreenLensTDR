@@ -24,7 +24,8 @@ import {
   addScanToHistory,
   deleteScan,
   clearHistory,
-  toggleFavorite
+  toggleFavorite,
+  safeSaveHistory
 } from './services/storageService';
 import {
   fetchUserScans,
@@ -85,6 +86,7 @@ export default function AppContent() {
       if (currentUser) {
         const cloudScans = await fetchUserScans();
         setHistory(cloudScans);
+        safeSaveHistory(cloudScans);
       } else {
         setHistory(getScanHistory());
       }
@@ -137,7 +139,7 @@ export default function AppContent() {
       });
     }
 
-    setHistory(getScanHistory());
+    setHistory((prev) => [saved, ...prev.filter((p) => String(p.id) !== String(saved.id))]);
 
     setCurrentResult({
       result,
@@ -151,26 +153,51 @@ export default function AppContent() {
 
   // Manejadores de historial
   const handleToggleFavorite = async (id: string) => {
-    const item = history.find((h) => h.id === id);
+    if (!id) return;
+    const item = history.find((h) => String(h.id) === String(id));
     const newFavState = !item?.isFavorite;
-    const updated = toggleFavorite(id);
-    setHistory(updated);
+
+    // 1. Actualizar estado React
+    setHistory((prev) =>
+      prev.map((h) => (String(h.id) === String(id) ? { ...h, isFavorite: newFavState } : h))
+    );
+
+    // 2. Actualizar almacenamiento local
+    toggleFavorite(id);
+
+    // 3. Sincronizar con Firestore si está autenticado
     if (currentUser) {
       await syncToggleFavorite(id, newFavState);
     }
   };
 
   const handleDeleteScan = async (id: string) => {
-    const updated = deleteScan(id);
-    setHistory(updated);
+    if (!id) return;
+
+    // 1. Eliminar estrictamente SOLO el elemento seleccionado mediante su ID
+    setHistory((prev) => prev.filter((item) => String(item.id) !== String(id)));
+
+    // 2. Eliminar del almacenamiento local
+    deleteScan(id);
+
+    // 3. Eliminar de Firestore si está autenticado
     if (currentUser) {
-      await syncDeleteScan(id);
+      try {
+        await syncDeleteScan(id);
+      } catch (err) {
+        console.error('Error eliminando escaneo de Firestore:', err);
+      }
     }
   };
 
   const handleClearHistory = async () => {
-    clearHistory();
+    // 1. Vaciar todo el historial del estado React
     setHistory([]);
+
+    // 2. Vaciar almacenamiento local
+    clearHistory();
+
+    // 3. Vaciar Firestore si está autenticado
     if (currentUser) {
       try {
         await syncClearAllUserScans();

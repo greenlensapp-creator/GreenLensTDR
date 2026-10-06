@@ -66,8 +66,7 @@ export const CuidadosHubView: React.FC<CuidadosHubViewProps> = ({
       descKey: 'care.tool.health.desc',
       color: 'text-rose-600',
       bgColor: 'bg-rose-500/10',
-      borderColor: 'border-rose-200/60',
-      badgeKey: 'care.badge3Photos'
+      borderColor: 'border-rose-200/60'
     }
   ];
 

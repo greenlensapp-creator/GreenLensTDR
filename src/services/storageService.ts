@@ -63,7 +63,7 @@ function createHistoryThumbnail(dataUrl: string, maxDimension: number = 280, qua
 /**
  * Guarda el historial de forma segura gestionando posibles excepciones de cuota (QuotaExceededError).
  */
-function safeSaveHistory(items: ScanHistoryItem[]): void {
+export function safeSaveHistory(items: ScanHistoryItem[]): void {
   try {
     localStorage.setItem(STORAGE_KEYS.HISTORY, JSON.stringify(items));
   } catch (err: any) {
@@ -167,7 +167,7 @@ export function addScanToHistory(
  */
 export function deleteScan(id: string): ScanHistoryItem[] {
   const history = getScanHistory();
-  const updated = history.filter((item) => item.id !== id);
+  const updated = history.filter((item) => String(item.id) !== String(id));
   safeSaveHistory(updated);
   return updated;
 }

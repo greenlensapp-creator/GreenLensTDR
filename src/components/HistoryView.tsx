@@ -287,8 +287,12 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
                 </span>
 
                 <button
-                  onClick={() => onToggleFavorite(item.id)}
-                  className="p-2 rounded-xl text-[#6d7a76] hover:text-amber-500 hover:bg-amber-50 transition-colors"
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onToggleFavorite(item.id);
+                  }}
+                  className="p-2 rounded-xl text-[#6d7a76] hover:text-amber-500 hover:bg-amber-50 transition-colors cursor-pointer"
                   aria-label={item.isFavorite ? t('history.favoriteRemoved') : t('history.favoriteAdded')}
                   title={item.isFavorite ? t('history.favoriteRemoved') : t('history.favoriteAdded')}
                 >
@@ -302,9 +306,14 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
                 </button>
 
                 <button
-                  onClick={() => onDeleteScan(item.id)}
-                  className="p-2 rounded-xl text-[#6d7a76] hover:text-red-600 hover:bg-red-50 transition-colors"
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDeleteScan(item.id);
+                  }}
+                  className="p-2 rounded-xl text-[#6d7a76] hover:text-red-600 hover:bg-red-50 transition-colors cursor-pointer"
                   aria-label={t('history.delete')}
+                  title={t('history.delete')}
                 >
                   <span className="material-symbols-outlined text-[18px]">delete</span>
                 </button>

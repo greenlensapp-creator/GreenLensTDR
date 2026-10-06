@@ -1,6 +1,7 @@
 import React, { useState, useRef } from 'react';
-import { ScanHistoryItem, LightMeterResponse, ImageValidationResult } from '../../types';
+import { ScanHistoryItem, LightMeterRequest, LightMeterResponse, ImageValidationResult } from '../../types';
 import { useTranslation } from '../../i18n/LanguageContext';
+import { getLocalizedSpeciesName } from '../../services/speciesLocalization';
 import { validateImageForCare } from '../../services/imageValidationService';
 import { processImageFile } from '../../services/imageProcessingService';
 import { evaluateLightLevel } from '../../services/careToolsService';
@@ -11,60 +12,55 @@ interface LightMeterViewProps {
   recentScans: ScanHistoryItem[];
 }
 
-export const LightMeterView: React.FC<LightMeterViewProps> = ({ onBack }) => {
-  const { t } = useTranslation();
+export const LightMeterView: React.FC<LightMeterViewProps> = ({
+  onBack,
+  recentScans
+}) => {
+  const { t, language } = useTranslation();
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const galleryInputRef = useRef<HTMLInputElement>(null);
 
   const [isCameraOpen, setIsCameraOpen] = useState<boolean>(false);
+  const [selectedPlant, setSelectedPlant] = useState<string>('');
+  const [customPlant, setCustomPlant] = useState<string>('');
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [, setValidationResult] = useState<ImageValidationResult | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
+
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [result, setResult] = useState<LightMeterResponse | null>(null);
+  const [calculatedPlantName, setCalculatedPlantName] = useState<string>('');
+  const [error, setError] = useState<string | null>(null);
 
-  const processAndAnalyzePhoto = async (file: File, precomputedDataUrl?: string) => {
-    if (!file) return;
+  const effectivePlantName = customPlant.trim() || selectedPlant || undefined;
 
-    // Limpiar estados previos inmediatamente
-    setResult(null);
+  const handleSelectPhoto = async (file: File, precomputedDataUrl?: string) => {
+    if (!file || isLoading) return;
+
     setValidationError(null);
-    setValidationResult(null);
-    setIsLoading(true);
+    setError(null);
 
     try {
       const dataUrl = precomputedDataUrl || (await processImageFile(file));
       setPhotoPreview(dataUrl);
 
-      // Validación de calidad y botánica local
       const val = await validateImageForCare(dataUrl);
       setValidationResult(val);
 
       if (!val.isValid) {
         const errKey = val.errorMessageKey || 'validation.notAPlant';
         setValidationError(t(errKey as any));
-        setIsLoading(false);
-        return;
       }
-
-      // Consulta real a la IA sobre la fotografía del espacio
-      const lightResult = await evaluateLightLevel({
-        imageBase64: dataUrl,
-        brightnessCategory: val.brightnessCategory
-      });
-      setResult(lightResult);
     } catch (err: any) {
-      console.error('[GreenLens: LightMeter error]', err);
+      console.error('[LightMeter] Error procesando imagen:', err);
       setValidationError(t('care.error.analysisFailed'));
-    } finally {
-      setIsLoading(false);
     }
   };
 
   const handleCameraChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      processAndAnalyzePhoto(file);
+      handleSelectPhoto(file);
     }
     e.target.value = '';
   };
@@ -72,19 +68,67 @@ export const LightMeterView: React.FC<LightMeterViewProps> = ({ onBack }) => {
   const handleGalleryChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      processAndAnalyzePhoto(file);
+      handleSelectPhoto(file);
     }
     e.target.value = '';
   };
 
-  const handleReset = () => {
+  const handleCalculateManual = async () => {
+    if (isLoading) return;
+    const plantNameToUse = effectivePlantName || '';
+    if (!photoPreview && !plantNameToUse) return;
+
+    setResult(null);
+    setError(null);
+    setValidationError(null);
+    setIsLoading(true);
+
+    try {
+      const request: LightMeterRequest = {
+        plantName: plantNameToUse || undefined,
+        imageBase64: photoPreview || undefined
+      };
+
+      const res = await evaluateLightLevel(request, language);
+
+      const isNonPlant =
+        res?.isPlant === false ||
+        /no se ha identificado|no s'ha identificat|no plant identified|not a plant|لم يتم/i.test(res?.plantName || '');
+
+      if (isNonPlant) {
+        setError(res?.recommendation || t('notAPlant.message'));
+        setResult(null);
+        return;
+      }
+
+      // Guardar el nombre para la tarjeta de resultado antes de limpiar la entrada
+      const returnedPlantName = res?.plantName || plantNameToUse || t('light.title');
+      setCalculatedPlantName(returnedPlantName);
+      setResult(res);
+
+      // Limpiar ÚNICAMENTE tras una respuesta exitosa de la API
+      setCustomPlant('');
+      setSelectedPlant('');
+      setPhotoPreview(null);
+      setValidationResult(null);
+      setValidationError(null);
+      if (cameraInputRef.current) cameraInputRef.current.value = '';
+      if (galleryInputRef.current) galleryInputRef.current.value = '';
+    } catch (err: any) {
+      console.error('[GreenLens: LightMeter error]', err);
+      setError(t('care.error.analysisFailed'));
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleResetPhoto = () => {
     setPhotoPreview(null);
     setValidationResult(null);
     setValidationError(null);
-    setResult(null);
+    if (cameraInputRef.current) cameraInputRef.current.value = '';
+    if (galleryInputRef.current) galleryInputRef.current.value = '';
   };
-
-  const lightLevels = ['Muy baja', 'Baja', 'Media', 'Alta', 'Muy alta'];
 
   return (
     <div className="space-y-6 pb-28">
@@ -94,13 +138,13 @@ export const LightMeterView: React.FC<LightMeterViewProps> = ({ onBack }) => {
         onClose={() => setIsCameraOpen(false)}
         onCapture={(file, dataUrl) => {
           setIsCameraOpen(false);
-          processAndAnalyzePhoto(file, dataUrl);
+          handleSelectPhoto(file, dataUrl);
         }}
         onFallbackToGallery={() => galleryInputRef.current?.click()}
         title={t('light.title')}
       />
 
-      {/* Hidden inputs específicos para Cámara y Galería */}
+      {/* Hidden inputs para cámara y galería */}
       <input
         ref={cameraInputRef}
         type="file"
@@ -120,7 +164,7 @@ export const LightMeterView: React.FC<LightMeterViewProps> = ({ onBack }) => {
       {/* Top navigation */}
       <button
         onClick={onBack}
-        className="inline-flex items-center gap-2 text-sm font-semibold text-[#006b5e] hover:text-[#005046] transition-colors"
+        className="inline-flex items-center gap-2 text-sm font-semibold text-[#006b5e] hover:text-[#005046] transition-colors cursor-pointer"
       >
         <span className="material-symbols-outlined text-lg">arrow_back</span>
         <span>{t('care.tool.backToHub')}</span>
@@ -139,215 +183,294 @@ export const LightMeterView: React.FC<LightMeterViewProps> = ({ onBack }) => {
         </div>
       </div>
 
-      {/* Photographed Space Action Box */}
+      {/* Photo capture or upload */}
       {!photoPreview ? (
         <div className="bg-white rounded-2xl p-6 border-2 border-dashed border-[#c5c8c7] hover:border-[#006b5e] transition-colors text-center space-y-4">
           <div className="w-16 h-16 rounded-full bg-amber-50 text-amber-600 flex items-center justify-center mx-auto">
-            <span className="material-symbols-outlined text-3xl">wb_incandescent</span>
+            <span className="material-symbols-outlined text-3xl">add_a_photo</span>
           </div>
           <div className="space-y-1">
             <h2 className="text-sm font-bold text-[#191c1d]">
-              {t('light.photoTitle')}
+              {t('watering.photoTitle')}
             </h2>
             <p className="text-xs text-[#526360] max-w-xs mx-auto">
-              {t('light.photoDesc')}
+              {t('watering.photoDesc')}
             </p>
           </div>
-
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
             <button
               id="light-take-photo-btn"
               disabled={isLoading}
               onClick={() => setIsCameraOpen(true)}
-              className="w-full sm:w-auto px-5 py-3 rounded-xl bg-gradient-to-r from-[#006b5e] to-[#005046] text-white text-xs font-bold hover:shadow-md active:scale-95 transition-all inline-flex items-center justify-center gap-2"
+              className="w-full sm:w-auto px-5 py-3 rounded-xl bg-gradient-to-r from-amber-600 to-yellow-600 text-white text-xs font-bold hover:shadow-md active:scale-95 transition-all inline-flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
             >
               <span className="material-symbols-outlined text-base">photo_camera</span>
-              <span>{t('light.takePhotoBtn')}</span>
+              <span>{t('watering.takePhotoBtn')}</span>
             </button>
             <button
               id="light-gallery-btn"
               disabled={isLoading}
               onClick={() => galleryInputRef.current?.click()}
-              className="w-full sm:w-auto px-5 py-3 rounded-xl bg-white border border-[#006b5e] text-[#006b5e] text-xs font-bold hover:bg-[#006b5e]/5 active:scale-95 transition-all inline-flex items-center justify-center gap-2"
+              className="w-full sm:w-auto px-5 py-3 rounded-xl bg-white border border-amber-600 text-amber-700 text-xs font-bold hover:bg-amber-50 active:scale-95 transition-all inline-flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
             >
               <span className="material-symbols-outlined text-base">photo_library</span>
-              <span>{t('light.galleryBtn')}</span>
+              <span>{t('watering.galleryBtn')}</span>
             </button>
           </div>
         </div>
       ) : (
-        <div className="space-y-4">
-          {/* Photo Preview & Loading / Error */}
-          <div className="bg-white rounded-2xl p-4 border border-[#e1e3e4] space-y-3">
-            <div className="relative rounded-xl overflow-hidden aspect-video bg-black/5 max-h-60 flex items-center justify-center">
-              <img
-                src={photoPreview}
-                alt="Espacio fotografiado para medir luz"
-                className="w-full h-full object-cover"
-              />
-              {!isLoading && (
-                <button
-                  onClick={handleReset}
-                  className="absolute top-2 right-2 p-1.5 rounded-full bg-black/60 text-white hover:bg-black/80 transition-colors"
-                  title={t('light.changePhoto')}
-                >
-                  <span className="material-symbols-outlined text-base">close</span>
-                </button>
-              )}
-            </div>
-
-            {/* Acciones para cambiar de foto si no está cargando */}
+        <div className="bg-white rounded-2xl p-4 border border-[#e1e3e4] space-y-3">
+          <div className="relative rounded-xl overflow-hidden aspect-video bg-black/5 max-h-56 flex items-center justify-center">
+            <img
+              src={photoPreview}
+              alt="Planta para medidor de luz"
+              className="w-full h-full object-cover"
+            />
             {!isLoading && (
-              <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
-                <button
-                  onClick={() => setIsCameraOpen(true)}
-                  className="px-3.5 py-1.5 rounded-lg border border-[#006b5e]/40 text-[#006b5e] text-xs font-semibold hover:bg-[#006b5e]/5 transition-colors inline-flex items-center gap-1.5"
-                >
-                  <span className="material-symbols-outlined text-sm">photo_camera</span>
-                  <span>{t('light.retakeCamera')}</span>
-                </button>
-                <button
-                  onClick={() => galleryInputRef.current?.click()}
-                  className="px-3.5 py-1.5 rounded-lg border border-gray-300 text-[#526360] text-xs font-semibold hover:bg-gray-50 transition-colors inline-flex items-center gap-1.5"
-                >
-                  <span className="material-symbols-outlined text-sm">photo_library</span>
-                  <span>{t('light.changeGallery')}</span>
-                </button>
-              </div>
-            )}
-
-            {/* Error banner */}
-            {validationError && (
-              <div className="rounded-xl bg-rose-50 border border-rose-200 p-3.5 space-y-2 text-left">
-                <div className="flex items-start gap-2.5 text-rose-800 font-semibold text-xs">
-                  <span className="material-symbols-outlined text-rose-600 text-lg flex-shrink-0">
-                    error
-                  </span>
-                  <span>{validationError}</span>
-                </div>
-                <p className="text-[11px] text-rose-700">
-                  {t('validation.notAPlantHelp')}
-                </p>
-                <div className="flex gap-2 pt-1">
-                  <button
-                    onClick={() => setIsCameraOpen(true)}
-                    className="px-3 py-1.5 rounded-lg bg-rose-600 text-white text-xs font-semibold hover:bg-rose-700 transition-colors inline-flex items-center gap-1.5"
-                  >
-                    <span className="material-symbols-outlined text-sm">photo_camera</span>
-                    <span>{t('light.takePhotoBtn')}</span>
-                  </button>
-                  <button
-                    onClick={() => galleryInputRef.current?.click()}
-                    className="px-3 py-1.5 rounded-lg bg-white border border-rose-300 text-rose-800 text-xs font-semibold hover:bg-rose-50 transition-colors inline-flex items-center gap-1.5"
-                  >
-                    <span className="material-symbols-outlined text-sm">photo_library</span>
-                    <span>{t('light.galleryBtn')}</span>
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* Loading state */}
-            {isLoading && (
-              <div className="flex items-center justify-center gap-3 py-6 text-xs text-[#006b5e] font-semibold">
-                <span className="material-symbols-outlined animate-spin text-xl">
-                  progress_activity
-                </span>
-                <span>{t('light.analyzing')}</span>
-              </div>
+              <button
+                onClick={handleResetPhoto}
+                className="absolute top-2 right-2 p-1.5 rounded-full bg-black/60 text-white hover:bg-black/80 transition-colors cursor-pointer"
+                title={t('watering.changePhoto')}
+              >
+                <span className="material-symbols-outlined text-base">close</span>
+              </button>
             )}
           </div>
 
-          {/* Results Display */}
-          {result && !isLoading && (
-            <div className="space-y-4">
-              {/* Level indicator card */}
-              <div className="bg-white rounded-2xl p-5 border border-[#e1e3e4] space-y-4">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold uppercase tracking-wider text-[#526360]">
-                    {t('light.detectedLevel')}
-                  </span>
-                  <span
-                    className={`text-xs font-bold px-2.5 py-1 rounded-full ${
-                      result.isAdequate
-                        ? 'bg-emerald-100 text-emerald-800'
-                        : 'bg-amber-100 text-amber-800'
-                    }`}
-                  >
-                    {result.adequacyStatus}
-                  </span>
-                </div>
+          {!isLoading && (
+            <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
+              <button
+                onClick={() => setIsCameraOpen(true)}
+                className="px-3.5 py-1.5 rounded-lg border border-amber-600/40 text-amber-700 text-xs font-semibold hover:bg-amber-50 transition-colors inline-flex items-center gap-1.5 cursor-pointer"
+              >
+                <span className="material-symbols-outlined text-sm">photo_camera</span>
+                <span>{t('watering.retakeCamera')}</span>
+              </button>
+              <button
+                onClick={() => galleryInputRef.current?.click()}
+                className="px-3.5 py-1.5 rounded-lg border border-gray-300 text-[#526360] text-xs font-semibold hover:bg-gray-50 transition-colors inline-flex items-center gap-1.5 cursor-pointer"
+              >
+                <span className="material-symbols-outlined text-sm">photo_library</span>
+                <span>{t('watering.changeGallery')}</span>
+              </button>
+            </div>
+          )}
 
-                <div className="text-xl font-bold text-[#191c1d]">
-                  {result.detectedLevel}
-                </div>
-
-                {/* Visual Level Meter Bar */}
-                <div className="space-y-1.5">
-                  <div className="grid grid-cols-5 gap-1.5 h-3">
-                    {lightLevels.map((lvl) => {
-                      const isActive =
-                        (result?.detectedLevel || '').toLowerCase().trim() ===
-                        (lvl || '').toLowerCase().trim();
-                      return (
-                        <div
-                          key={lvl}
-                          className={`rounded-full transition-all ${
-                            isActive
-                              ? 'bg-amber-500 ring-2 ring-amber-400 ring-offset-1 scale-105'
-                              : 'bg-gray-200'
-                          }`}
-                        />
-                      );
-                    })}
-                  </div>
-                  <div className="flex justify-between text-[10px] text-[#526360]">
-                    <span>{t('light.veryLow')}</span>
-                    <span>{t('light.medium')}</span>
-                    <span>{t('light.veryHigh')}</span>
-                  </div>
-                </div>
+          {validationError && (
+            <div className="rounded-xl bg-rose-50 border border-rose-200 p-3.5 space-y-2 text-left">
+              <div className="flex items-start gap-2 text-rose-800 font-semibold text-xs">
+                <span className="material-symbols-outlined text-rose-600 text-lg flex-shrink-0">
+                  error
+                </span>
+                <span>{validationError}</span>
               </div>
+              <p className="text-[11px] text-rose-700">
+                {t('validation.notAPlantHelp')}
+              </p>
+              <div className="flex gap-2 pt-1">
+                <button
+                  onClick={() => setIsCameraOpen(true)}
+                  className="px-3 py-1.5 rounded-lg bg-rose-600 text-white text-xs font-semibold hover:bg-rose-700 transition-colors inline-flex items-center gap-1.5 cursor-pointer"
+                >
+                  <span className="material-symbols-outlined text-sm">photo_camera</span>
+                  <span>{t('watering.takePhotoBtn')}</span>
+                </button>
+                <button
+                  onClick={() => galleryInputRef.current?.click()}
+                  className="px-3 py-1.5 rounded-lg bg-white border border-rose-300 text-rose-800 text-xs font-semibold hover:bg-rose-50 transition-colors inline-flex items-center gap-1.5 cursor-pointer"
+                >
+                  <span className="material-symbols-outlined text-sm">photo_library</span>
+                  <span>{t('watering.galleryBtn')}</span>
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
-              {/* Advice card */}
-              <div className="bg-white rounded-2xl p-5 border border-[#e1e3e4] space-y-3">
-                <h3 className="text-xs font-bold uppercase tracking-wider text-[#526360]">
-                  {t('light.locationAdvice')}
+      {/* Manual Plant Input Selector (Exacto al Calculador de riego) */}
+      <div className="bg-white rounded-2xl p-5 border border-[#e1e3e4] space-y-4">
+        <div className="space-y-2">
+          <label className="block text-xs font-bold uppercase tracking-wider text-[#526360]">
+            {t('watering.plantSpecies')}
+          </label>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <input
+              type="text"
+              value={customPlant}
+              onChange={(e) => setCustomPlant(e.target.value)}
+              placeholder={t('watering.plantPlaceholder')}
+              className="w-full text-xs bg-[#f8fafb] border border-[#dce0e0] rounded-xl px-3.5 py-2.5 text-[#191c1d] focus:ring-2 focus:ring-[#006b5e]"
+            />
+            {recentScans.length > 0 && (
+              <select
+                value={selectedPlant}
+                onChange={(e) => {
+                  setSelectedPlant(e.target.value);
+                  setCustomPlant('');
+                }}
+                className="w-full text-xs bg-[#f8fafb] border border-[#dce0e0] rounded-xl px-3.5 py-2.5 text-[#191c1d] focus:ring-2 focus:ring-[#006b5e]"
+              >
+                <option value="">{t('watering.selectFromHistory')}</option>
+                {recentScans.map((s) => (
+                  <option key={s.id} value={s.name}>
+                    {getLocalizedSpeciesName(s.name, t)}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
+        </div>
+
+        <div className="pt-2">
+          <button
+            id="light-calculate-btn"
+            disabled={isLoading || (!photoPreview && !effectivePlantName)}
+            onClick={handleCalculateManual}
+            className="w-full py-3 rounded-xl bg-gradient-to-r from-amber-600 to-yellow-600 text-white text-xs font-bold hover:shadow-md active:scale-95 transition-all disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer"
+          >
+            {isLoading ? (
+              <>
+                <span className="material-symbols-outlined animate-spin text-lg">
+                  progress_activity
+                </span>
+                <span>{t('light.analyzing')}</span>
+              </>
+            ) : (
+              <>
+                <span className="material-symbols-outlined text-base">wb_sunny</span>
+                <span>{t('light.calculateBtn')}</span>
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+
+      {/* Loading */}
+      {isLoading && (
+        <div className="bg-white rounded-2xl p-6 border border-[#e1e3e4] flex items-center justify-center gap-3 text-xs text-amber-700 font-semibold">
+          <span className="material-symbols-outlined animate-spin text-xl">
+            progress_activity
+          </span>
+          <span>{t('light.analyzing')}</span>
+        </div>
+      )}
+
+      {/* Error with retry */}
+      {error && !isLoading && (
+        <div className="rounded-xl bg-rose-50 border border-rose-200 p-4 text-xs text-rose-800 space-y-2">
+          <div className="flex items-center gap-2">
+            <span className="material-symbols-outlined text-rose-600">error</span>
+            <span className="font-semibold">{error}</span>
+          </div>
+          <div className="pt-1">
+            <button
+              onClick={handleCalculateManual}
+              className="px-3 py-1.5 bg-rose-600 text-white rounded-lg font-semibold hover:bg-rose-700 transition-colors inline-flex items-center gap-1.5 cursor-pointer"
+            >
+              <span className="material-symbols-outlined text-sm">refresh</span>
+              <span>{t('watering.retry')}</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Floating Result Modal Overlay (Exacto al Calculador de riego) */}
+      {result && !isLoading && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div
+            className="relative w-full max-w-md max-h-[90vh] overflow-y-auto bg-white dark:bg-[#192b27] rounded-3xl shadow-2xl border border-[#dce0e0] dark:border-white/10 p-6 sm:p-7 space-y-5 animate-in zoom-in-95 duration-200"
+            role="dialog"
+            aria-modal="true"
+          >
+            {/* Close Button Top Right */}
+            <button
+              onClick={() => setResult(null)}
+              className="absolute top-4 right-4 p-2 text-gray-400 hover:text-gray-600 dark:hover:text-white rounded-full hover:bg-gray-100 dark:hover:bg-white/10 transition-colors cursor-pointer"
+              aria-label={t('common.close') || 'Cerrar'}
+            >
+              <span className="material-symbols-outlined text-xl">close</span>
+            </button>
+
+            {/* Header / Plant Reference */}
+            <div className="flex items-center gap-2.5 pr-8">
+              <div className="w-9 h-9 rounded-xl bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-300 flex items-center justify-center flex-shrink-0">
+                <span className="material-symbols-outlined text-xl">wb_sunny</span>
+              </div>
+              <div className="min-w-0">
+                <h3 className="text-sm font-bold text-[#191c1d] dark:text-white truncate">
+                  {calculatedPlantName || effectivePlantName || t('light.title')}
                 </h3>
-                <p className="text-xs text-[#191c1d] leading-relaxed">
-                  {result.locationAdvice}
+                <p className="text-[11px] text-[#526360] dark:text-gray-400 truncate">
+                  {t('light.desc')}
                 </p>
-                <div className="pt-2 border-t border-[#e1e3e4] space-y-1.5">
-                  <span className="text-xs font-bold text-[#006b5e]">
-                    {t('light.recommendation')}:
-                  </span>
-                  <p className="text-xs text-[#526360]">{result.recommendedLightType}</p>
-                </div>
+              </div>
+            </div>
+
+            <div className="space-y-3.5 pt-1">
+              {/* PLANTA */}
+              <div className="bg-[#f8fafb] dark:bg-white/5 border border-[#e1e3e4] dark:border-white/10 rounded-2xl p-4 space-y-1">
+                <span className="block text-[10px] font-extrabold uppercase tracking-wider text-[#526360] dark:text-gray-400">
+                  {t('watering.plantSpecies') || 'PLANTA'}
+                </span>
+                <p className="text-lg sm:text-xl font-bold text-[#191c1d] dark:text-white capitalize">
+                  {result.plantName || calculatedPlantName || effectivePlantName || t('light.title')}
+                </p>
               </div>
 
-              {/* Recommendations list */}
-              {result.recommendations && result.recommendations.length > 0 && (
-                <div className="bg-emerald-50/70 rounded-2xl p-4 border border-emerald-200/80 space-y-2">
-                  <h4 className="text-xs font-bold text-emerald-900">
-                    {t('light.guidelinesTitle')}
-                  </h4>
-                  <ul className="space-y-1.5">
-                    {result.recommendations.map((rec, idx) => (
-                      <li
-                        key={idx}
-                        className="text-xs text-emerald-950 flex items-start gap-2"
-                      >
-                        <span className="material-symbols-outlined text-sm text-emerald-700 flex-shrink-0 mt-0.5">
-                          check_circle
-                        </span>
-                        <span>{rec}</span>
-                      </li>
-                    ))}
-                  </ul>
+              {/* 1. HORAS DE LUZ */}
+              <div className="bg-amber-50/70 dark:bg-amber-950/30 border border-amber-200/80 dark:border-amber-900/40 rounded-2xl p-4 space-y-1">
+                <span className="block text-[11px] font-extrabold uppercase tracking-wider text-amber-800 dark:text-amber-300">
+                  {t('light.hoursOfLight') || 'Horas de luz'}
+                </span>
+                <p className="text-xl sm:text-2xl font-bold text-[#191c1d] dark:text-white tracking-tight">
+                  {result.hoursOfLight}
+                </p>
+              </div>
+
+              {/* 2. EXPOSICIÓN */}
+              <div className="bg-teal-50/70 dark:bg-teal-950/30 border border-teal-200/80 dark:border-teal-900/40 rounded-2xl p-4 space-y-1">
+                <span className="block text-[11px] font-extrabold uppercase tracking-wider text-teal-800 dark:text-teal-300">
+                  {t('light.exposure') || 'Exposición'}
+                </span>
+                <p className="text-xl sm:text-2xl font-bold text-[#191c1d] dark:text-white tracking-tight">
+                  {result.exposureType}
+                </p>
+              </div>
+
+              {/* 3. INTENSIDAD (PROTAGONISTA EN GRANDE) */}
+              <div className="bg-gradient-to-br from-amber-50 to-amber-100/60 dark:from-amber-950/40 dark:to-amber-900/20 border border-amber-300/80 dark:border-amber-700/50 rounded-2xl p-4 sm:p-5 space-y-1">
+                <span className="block text-[11px] font-extrabold uppercase tracking-wider text-amber-900 dark:text-amber-200">
+                  {t('light.adequateIntensity') || 'Intensidad'}
+                </span>
+                <p className="text-2xl sm:text-3xl font-black text-[#191c1d] dark:text-white tracking-tight">
+                  {result.adequateIntensity}
+                </p>
+              </div>
+
+              {/* 4. RECOMENDACIÓN (AL FINAL DEL PANEL) */}
+              {result.recommendation && (
+                <div className="bg-[#f8fafb] dark:bg-white/5 border border-[#e1e3e4] dark:border-white/10 rounded-xl p-3.5 space-y-1">
+                  <span className="block text-[10px] font-bold uppercase tracking-wider text-[#526360] dark:text-gray-400">
+                    {t('light.recommendation')}
+                  </span>
+                  <p className="text-xs text-gray-700 dark:text-gray-300 leading-relaxed font-normal">
+                    {result.recommendation}
+                  </p>
                 </div>
               )}
             </div>
-          )}
+
+            {/* Action Footer */}
+            <div className="pt-2">
+              <button
+                onClick={() => setResult(null)}
+                className="w-full py-3 rounded-xl bg-gradient-to-r from-amber-600 to-yellow-600 text-white text-xs font-bold shadow-md hover:shadow-lg active:scale-95 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                <span>{t('care.tool.backToHub')}</span>
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

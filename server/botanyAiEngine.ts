@@ -1119,76 +1119,169 @@ If NO identifiable plant is present, respond ONLY with JSON:
     }
 
     case 'ideal_conditions': {
-      const system = `You are a plant climatology expert for GreenLens.
-Evaluate ideal environmental conditions for the plant.
-If the input is NOT an identifiable plant, return JSON with "isPlant": false, "summary": "message in ${targetLangName} stating no plant was identified", "light": { "type": "N/A", "hoursPerDay": 0, "notes": "N/A" }, "temperature": { "min": 0, "max": 0, "optimal": 0 }, "humidity": { "min": 0, "max": 0, "optimal": 0 }, "airFlow": "N/A".
-${baseJsonRule}
-Devuelve un JSON con:
+      const { imageBase64, plantName } = request.payload || {};
+      const system = `Botanical ideal growing conditions advisor. Language: ${targetLangName}.
+CRITICAL BOTANICAL VERIFICATION:
+- If the photo or plant name corresponds to an identifiable plant, respond ONLY with a compact JSON with these keys:
 {
-  "isPlant": boolean,
-  "light": { "type": string, "hoursPerDay": number, "notes": string },
-  "temperature": { "min": number, "max": number, "optimal": number },
-  "humidity": { "min": number, "max": number, "optimal": number },
-  "airFlow": string,
-  "summary": string
+  "isPlant": true,
+  "plantName": "name in ${targetLangName}",
+  "temperature": "e.g. 18°C – 24°C",
+  "humidity": "e.g. 50% – 70%",
+  "light": "e.g. Luz indirecta brillante",
+  "soil": "short soil description in ${targetLangName}",
+  "watering": "short watering advice in ${targetLangName}",
+  "summary": "one concise summary sentence in ${targetLangName}"
+}
+- If NO identifiable plant is present in photo or text, respond ONLY with JSON:
+{
+  "isPlant": false,
+  "plantName": "No se ha identificado ninguna planta" (strictly in ${targetLangName}),
+  "temperature": "N/A",
+  "humidity": "N/A",
+  "light": "N/A",
+  "soil": "N/A",
+  "watering": "N/A",
+  "summary": "message in ${targetLangName} stating no plant was identified"
 }`;
-      return { system, user: `Evalúa las condiciones ideales en ${targetLangName} para: ${JSON.stringify(request.payload)}. Si no es una planta, indica isPlant: false.`, hasImage: false };
-    }
 
-    case 'plant_health': {
-      const system = `You are an expert plant pathologist for GreenLens.
-Diagnose the health of the plant based on provided photos/info.
-If the input/images do NOT contain an identifiable plant, return JSON with "isPlant": false, "healthStatus": "unknown", "issues": [], "urgency": "none", "overallAdvice": "message in ${targetLangName} stating no plant was identified".
-${baseJsonRule}
-Devuelve un JSON con:
-{
-  "isPlant": boolean,
-  "healthStatus": "healthy" | "warning" | "critical" | "unknown",
-  "issues": [
-    {
-      "name": string,
-      "severity": "low" | "medium" | "high",
-      "symptoms": string[],
-      "treatment": string,
-      "prevention": string
-    }
-  ],
-  "urgency": string,
-  "overallAdvice": string
-}`;
+      const userText = plantName
+        ? `Plant: "${plantName}". Return ideal growing conditions in ${targetLangName}. If not a plant, set isPlant: false. Output JSON only.`
+        : `Identify plant in photo and return ideal growing conditions in ${targetLangName}. If not a plant, set isPlant: false. Output JSON only.`;
+
       const userContent: any[] = [
         {
           type: 'text',
-          text: `Diagnostica la salud botánica en ${targetLangName} con esta información: ${JSON.stringify(request.payload?.plantName || '')}`
+          text: userText
         }
       ];
 
-      let hasImg = false;
-      if (Array.isArray(request.payload?.images)) {
-        for (const img of request.payload.images) {
-          if (img) {
-            hasImg = true;
-            const formatted = img.startsWith('data:') ? img : `data:image/jpeg;base64,${img}`;
-            userContent.push({ type: 'image_url', image_url: { url: formatted } });
-          }
-        }
+      if (imageBase64) {
+        const formattedImageUrl = imageBase64.startsWith('data:')
+          ? imageBase64
+          : `data:image/jpeg;base64,${imageBase64}`;
+        userContent.push({
+          type: 'image_url',
+          image_url: { url: formattedImageUrl }
+        });
       }
 
-      return { system, user: userContent, hasImage: hasImg };
+      return {
+        system,
+        user: imageBase64 ? userContent : userText,
+        hasImage: Boolean(imageBase64)
+      };
+    }
+
+    case 'plant_health': {
+      const { imageBase64, images, plantName, symptoms } = request.payload || {};
+      const effectiveImage = imageBase64 || (Array.isArray(images) && images[0]) || undefined;
+
+      const system = `Expert botanical plant problem diagnostician for GreenLens. Language: ${targetLangName}.
+CRITICAL DIAGNOSTIC & TOKEN-EFFICIENCY RULES:
+- Analyze the plant image (and optional name/symptoms) to detect visible problems or symptoms.
+- Do NOT make assertions with absolute certainty if the image does not fully confirm a disease/pest. Mark uncertain diagnoses as "Posible [...]".
+- If no visible issues are detected, state clearly that the plant appears healthy with no visible problems detected.
+- Keep explanations extremely concise, practical, and highly token-optimized. No filler text or redundant repetitions.
+- If an identifiable plant is present, respond ONLY with a compact JSON:
+{
+  "isPlant": true,
+  "plantName": "name in ${targetLangName}",
+  "problem": "one concise sentence describing the main detected problem or stating no visible issues in ${targetLangName}",
+  "possibleCauses": "brief summary of 1-3 most probable causes in ${targetLangName}",
+  "solutions": "brief practical action points/solutions in ${targetLangName}",
+  "severity": "Baja" | "Media" | "Alta" (localized strictly in ${targetLangName}),
+  "recommendation": "one single short sentence with final recommendation in ${targetLangName}"
+}
+- If NO identifiable plant is present in photo or text, respond ONLY with JSON:
+{
+  "isPlant": false,
+  "plantName": "No se ha identificado ninguna planta" (in ${targetLangName}),
+  "problem": "No se ha identificado ninguna planta",
+  "possibleCauses": "N/A",
+  "solutions": "N/A",
+  "severity": "N/A",
+  "recommendation": "message in ${targetLangName} stating no plant was identified"
+}`;
+
+      const userText = plantName
+        ? `Plant: "${plantName}". ${symptoms ? `Symptoms noted: "${symptoms}". ` : ''}Diagnose visible plant problems in ${targetLangName}. Output compact JSON only.`
+        : `Diagnose visible plant problems from image in ${targetLangName}. ${symptoms ? `Symptoms noted: "${symptoms}". ` : ''}Output compact JSON only.`;
+
+      const userContent: any[] = [
+        {
+          type: 'text',
+          text: userText
+        }
+      ];
+
+      if (effectiveImage) {
+        const formattedImageUrl = effectiveImage.startsWith('data:')
+          ? effectiveImage
+          : `data:image/jpeg;base64,${effectiveImage}`;
+        userContent.push({
+          type: 'image_url',
+          image_url: { url: formattedImageUrl }
+        });
+      }
+
+      return {
+        system,
+        user: effectiveImage ? userContent : userText,
+        hasImage: Boolean(effectiveImage)
+      };
     }
 
     case 'light_evaluation': {
-      const system = `Eres un asesor de iluminación hortícola para GreenLens.
-Evalúa la medición de luz en lux/fc y determina qué especies vegetales prosperan en ese nivel de luz.
-${baseJsonRule}
-Devuelve un JSON con:
+      const { imageBase64, plantName } = request.payload || {};
+      const system = `Botanical light requirements expert for GreenLens. Language: ${targetLangName}.
+CRITICAL BOTANICAL RULES:
+- Identify or use the plant species to determine its optimal light requirements.
+- If the input/photo corresponds to an identifiable plant, respond ONLY with a compact JSON:
 {
-  "lightLevelCategory": string,
-  "luxAssessment": string,
-  "suitablePlantTypes": string[],
-  "placementAdvice": string
+  "isPlant": true,
+  "plantName": "name in ${targetLangName}",
+  "hoursOfLight": "e.g. 6–8 h/día (in ${targetLangName})",
+  "exposureType": "e.g. Luz indirecta brillante (in ${targetLangName})",
+  "adequateIntensity": "e.g. 1.500–3.000 lux or Media-Alta (in ${targetLangName})",
+  "recommendation": "one concise sentence about its light requirements in ${targetLangName}"
+}
+- If NO identifiable plant is present in photo or text, respond ONLY with JSON:
+{
+  "isPlant": false,
+  "plantName": "No se ha identificado ninguna planta" (in ${targetLangName}),
+  "hoursOfLight": "N/A",
+  "exposureType": "N/A",
+  "adequateIntensity": "N/A",
+  "recommendation": "message in ${targetLangName} stating no plant was identified"
 }`;
-      return { system, user: `Evalúa este nivel de luz: ${JSON.stringify(request.payload)}`, hasImage: false };
+
+      const userText = plantName
+        ? `Plant: "${plantName}". Return light requirements in ${targetLangName}. If not a plant, set isPlant: false. Output JSON only.`
+        : `Identify plant in photo and return light requirements in ${targetLangName}. If not a plant, set isPlant: false. Output JSON only.`;
+
+      const userContent: any[] = [
+        {
+          type: 'text',
+          text: userText
+        }
+      ];
+
+      if (imageBase64) {
+        const formattedImageUrl = imageBase64.startsWith('data:')
+          ? imageBase64
+          : `data:image/jpeg;base64,${imageBase64}`;
+        userContent.push({
+          type: 'image_url',
+          image_url: { url: formattedImageUrl }
+        });
+      }
+
+      return {
+        system,
+        user: imageBase64 ? userContent : userText,
+        hasImage: Boolean(imageBase64)
+      };
     }
 
     default:
@@ -1816,7 +1909,31 @@ export async function handleConditions(
     payload: params
   };
 
-  return await executeGroqApiCall(request, clientKey);
+  const rawResult = await executeGroqApiCall<any>(request, clientKey, 320);
+
+  const isPlant = rawResult?.isPlant !== false;
+  const plantName = rawResult?.plantName || params?.plantName || (isPlant ? 'Planta' : 'No se ha identificado ninguna planta');
+  const temperature = rawResult?.temperature || (isPlant ? '18°C – 24°C' : 'N/A');
+  const humidity = rawResult?.humidity || (isPlant ? '50% – 70%' : 'N/A');
+  const light = rawResult?.light || (isPlant ? 'Luz indirecta brillante' : 'N/A');
+  const soil = rawResult?.soil || (isPlant ? 'Sustrato fértil y bien drenado' : 'N/A');
+  const watering = rawResult?.watering || (isPlant ? 'Riego moderado' : 'N/A');
+  const summary = rawResult?.summary || (isPlant ? 'Mantener en condiciones templadas con buena iluminación.' : 'No se ha identificado ninguna planta.');
+
+  return {
+    isPlant,
+    plantName,
+    temperature,
+    humidity,
+    light,
+    soil,
+    watering,
+    summary,
+    // Compatibilidad auxiliar
+    rating: isPlant ? 'Adecuado' : 'No recomendado',
+    ratingScore: isPlant ? 'green' : 'red',
+    recommendations: [summary]
+  };
 }
 
 export async function handlePlantHealth(
@@ -1830,7 +1947,29 @@ export async function handlePlantHealth(
     payload: params
   };
 
-  return await executeGroqApiCall(request, clientKey);
+  const rawResult = await executeGroqApiCall<any>(request, clientKey, 260);
+
+  const isPlant = rawResult?.isPlant !== false;
+  const plantName = rawResult?.plantName || params?.plantName || (isPlant ? 'Planta' : 'No se ha identificado ninguna planta');
+  const problem = rawResult?.problem || (isPlant ? 'Sin problemas visibles aparentes' : 'No se ha identificado ninguna planta');
+  const possibleCauses = rawResult?.possibleCauses || (isPlant ? 'Condiciones de cultivo y riego adecuadas.' : 'N/A');
+  const solutions = rawResult?.solutions || (isPlant ? 'Mantener los cuidados habituales y vigilar la evolución.' : 'N/A');
+  const severity = rawResult?.severity || (isPlant ? 'Baja' : 'N/A');
+  const recommendation = rawResult?.recommendation || (isPlant ? 'Continúa vigilando la planta periódicamente.' : 'No se ha identificado ninguna planta.');
+
+  return {
+    isPlant,
+    plantName,
+    problem,
+    possibleCauses,
+    solutions,
+    severity,
+    recommendation,
+    // Compatibilidad auxiliar
+    healthStatus: severity === 'Alta' ? 'critical' : severity === 'Media' ? 'warning' : 'healthy',
+    overallAdvice: recommendation,
+    recommendations: [recommendation]
+  };
 }
 
 export async function handleLightMeter(
@@ -1844,5 +1983,24 @@ export async function handleLightMeter(
     payload: params
   };
 
-  return await executeGroqApiCall(request, clientKey);
+  const rawResult = await executeGroqApiCall<any>(request, clientKey, 220);
+
+  const isPlant = rawResult?.isPlant !== false;
+  const plantName = rawResult?.plantName || params?.plantName || (isPlant ? 'Planta' : 'No se ha identificado ninguna planta');
+  const hoursOfLight = rawResult?.hoursOfLight || (isPlant ? '6–8 h/día' : 'N/A');
+  const exposureType = rawResult?.exposureType || (isPlant ? 'Luz indirecta brillante' : 'N/A');
+  const adequateIntensity = rawResult?.adequateIntensity || (isPlant ? '1.500–3.000 lux' : 'N/A');
+  const recommendation = rawResult?.recommendation || (isPlant ? 'Colocar en un lugar con buena iluminación indirecta.' : 'No se ha identificado ninguna planta.');
+
+  return {
+    isPlant,
+    plantName,
+    hoursOfLight,
+    exposureType,
+    adequateIntensity,
+    recommendation,
+    // Compatibilidad auxiliar si fuera requerida
+    detectedLevel: 'Adecuada',
+    recommendations: [recommendation]
+  };
 }

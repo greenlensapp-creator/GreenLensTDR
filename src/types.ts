@@ -119,8 +119,27 @@ export type CareToolType =
 
 export interface LightMeterRequest {
   imageBase64?: string;
-  brightnessCategory?: 'Muy baja' | 'Baja' | 'Media' | 'Alta' | 'Muy alta' | string;
   plantName?: string;
+  brightnessCategory?: 'Muy baja' | 'Baja' | 'Media' | 'Alta' | 'Muy alta' | string;
+}
+
+export interface LightMeterResponse {
+  isPlant?: boolean;
+  plantName?: string;
+  hoursOfLight: string;
+  exposureType: string;
+  adequateIntensity: string;
+  recommendation: string;
+  // Propiedades auxiliares de compatibilidad
+  detectedLevel?: string;
+  detectedLevelKey?: 'low' | 'adequate' | 'high' | string;
+  adequateZone?: { minPercent: number; maxPercent: number };
+  currentLevelPercent?: number;
+  isAdequate?: boolean;
+  adequacyStatus?: string;
+  recommendedLightType?: string;
+  locationAdvice?: string;
+  recommendations?: string[];
 }
 
 export interface WateringCalcRequest {
@@ -167,15 +186,20 @@ export interface ConditionFactorAssessment {
 
 export interface ConditionsResponse {
   isPlant?: boolean;
-  rating: 'Adecuado' | 'Mejorable' | 'No recomendado' | string;
-  ratingScore: 'green' | 'yellow' | 'red';
-  temperatureAssessment: ConditionFactorAssessment;
-  humidityAssessment: ConditionFactorAssessment;
-  lightAssessment: ConditionFactorAssessment;
-  soilAssessment: ConditionFactorAssessment;
-  recommendations: string[];
-  summary?: string;
-  light?: { type?: string; hoursPerDay?: number; notes?: string };
+  plantName?: string;
+  temperature: string;
+  humidity: string;
+  light: string;
+  soil?: string;
+  watering?: string;
+  summary: string;
+  rating?: 'Adecuado' | 'Mejorable' | 'No recomendado' | string;
+  ratingScore?: 'green' | 'yellow' | 'red';
+  temperatureAssessment?: ConditionFactorAssessment;
+  humidityAssessment?: ConditionFactorAssessment;
+  lightAssessment?: ConditionFactorAssessment;
+  soilAssessment?: ConditionFactorAssessment;
+  recommendations?: string[];
 }
 
 export interface CareGuideRequest {
@@ -203,7 +227,8 @@ export interface CareGuideResponse {
 }
 
 export interface PlantHealthRequest {
-  images: string[];
+  imageBase64?: string;
+  images?: string[];
   plantName?: string;
   symptoms?: string;
   photoAngles?: string[];
@@ -211,6 +236,13 @@ export interface PlantHealthRequest {
 
 export interface PlantHealthResponse {
   isPlant?: boolean;
+  plantName?: string;
+  problem: string;
+  possibleCauses: string;
+  solutions: string;
+  severity: 'Baja' | 'Media' | 'Alta' | string;
+  recommendation: string;
+  // Propiedades auxiliares de compatibilidad
   healthStatus?: 'healthy' | 'warning' | 'critical' | 'unknown' | string;
   statusLevel?: 'healthy' | 'warning' | 'alert' | string;
   statusLabel?: string;
@@ -218,10 +250,6 @@ export interface PlantHealthResponse {
   overallAdvice?: string;
   issues?: any[];
   possibleIssues?: string[];
-  possibleCauses?: string[];
-  wateringEvaluation?: string;
-  lightEvaluation?: string;
-  temperatureEvaluation?: string;
   recommendations?: string[];
 }
 
