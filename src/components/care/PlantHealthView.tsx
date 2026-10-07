@@ -1,7 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { ScanHistoryItem, PlantHealthRequest, PlantHealthResponse, ImageValidationResult } from '../../types';
 import { useTranslation } from '../../i18n/LanguageContext';
-import { getLocalizedSpeciesName } from '../../services/speciesLocalization';
 import { validateImageForCare } from '../../services/imageValidationService';
 import { processImageFile } from '../../services/imageProcessingService';
 import { analyzePlantHealth } from '../../services/careToolsService';
@@ -9,20 +8,17 @@ import { CareCameraModal } from './CareCameraModal';
 
 interface PlantHealthViewProps {
   onBack: () => void;
-  recentScans: ScanHistoryItem[];
+  recentScans?: ScanHistoryItem[];
 }
 
 export const PlantHealthView: React.FC<PlantHealthViewProps> = ({
-  onBack,
-  recentScans
+  onBack
 }) => {
   const { t, language } = useTranslation();
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const galleryInputRef = useRef<HTMLInputElement>(null);
 
   const [isCameraOpen, setIsCameraOpen] = useState<boolean>(false);
-  const [selectedPlant, setSelectedPlant] = useState<string>('');
-  const [customPlant, setCustomPlant] = useState<string>('');
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [, setValidationResult] = useState<ImageValidationResult | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
@@ -31,8 +27,6 @@ export const PlantHealthView: React.FC<PlantHealthViewProps> = ({
   const [result, setResult] = useState<PlantHealthResponse | null>(null);
   const [calculatedPlantName, setCalculatedPlantName] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
-
-  const effectivePlantName = customPlant.trim() || selectedPlant || undefined;
 
   const handleSelectPhoto = async (file: File, precomputedDataUrl?: string) => {
     if (!file || isLoading) return;
@@ -73,10 +67,8 @@ export const PlantHealthView: React.FC<PlantHealthViewProps> = ({
     e.target.value = '';
   };
 
-  const handleCalculateManual = async () => {
-    if (isLoading) return;
-    const plantNameToUse = effectivePlantName || '';
-    if (!photoPreview && !plantNameToUse) return;
+  const handleAnalyze = async () => {
+    if (isLoading || !photoPreview) return;
 
     setResult(null);
     setError(null);
@@ -85,9 +77,8 @@ export const PlantHealthView: React.FC<PlantHealthViewProps> = ({
 
     try {
       const request: PlantHealthRequest = {
-        plantName: plantNameToUse || undefined,
-        imageBase64: photoPreview || undefined,
-        images: photoPreview ? [photoPreview] : []
+        imageBase64: photoPreview,
+        images: [photoPreview]
       };
 
       const res = await analyzePlantHealth(request, language);
@@ -102,14 +93,11 @@ export const PlantHealthView: React.FC<PlantHealthViewProps> = ({
         return;
       }
 
-      // Guardar el nombre para la tarjeta de resultado antes de limpiar la entrada
-      const returnedPlantName = res?.plantName || plantNameToUse || t('health.title');
+      const returnedPlantName = res?.plantName || t('health.title');
       setCalculatedPlantName(returnedPlantName);
       setResult(res);
 
-      // Limpiar ÚNICAMENTE tras una respuesta exitosa de la API
-      setCustomPlant('');
-      setSelectedPlant('');
+      // Limpiar entrada tras respuesta exitosa
       setPhotoPreview(null);
       setValidationResult(null);
       setValidationError(null);
@@ -220,7 +208,7 @@ export const PlantHealthView: React.FC<PlantHealthViewProps> = ({
           </div>
         </div>
       ) : (
-        <div className="bg-white rounded-2xl p-4 border border-[#e1e3e4] space-y-3">
+        <div className="bg-white rounded-2xl p-4 border border-[#e1e3e4] space-y-4">
           <div className="relative rounded-xl overflow-hidden aspect-video bg-black/5 max-h-56 flex items-center justify-center">
             <img
               src={photoPreview}
@@ -239,7 +227,7 @@ export const PlantHealthView: React.FC<PlantHealthViewProps> = ({
           </div>
 
           {!isLoading && (
-            <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
+            <div className="flex flex-wrap items-center justify-center gap-2">
               <button
                 onClick={() => setIsCameraOpen(true)}
                 className="px-3.5 py-1.5 rounded-lg border border-rose-600/40 text-rose-700 text-xs font-semibold hover:bg-rose-50 transition-colors inline-flex items-center gap-1.5 cursor-pointer"
@@ -268,84 +256,33 @@ export const PlantHealthView: React.FC<PlantHealthViewProps> = ({
               <p className="text-[11px] text-rose-700">
                 {t('validation.notAPlantHelp')}
               </p>
-              <div className="flex gap-2 pt-1">
-                <button
-                  onClick={() => setIsCameraOpen(true)}
-                  className="px-3 py-1.5 rounded-lg bg-rose-600 text-white text-xs font-semibold hover:bg-rose-700 transition-colors inline-flex items-center gap-1.5 cursor-pointer"
-                >
-                  <span className="material-symbols-outlined text-sm">photo_camera</span>
-                  <span>{t('watering.takePhotoBtn')}</span>
-                </button>
-                <button
-                  onClick={() => galleryInputRef.current?.click()}
-                  className="px-3 py-1.5 rounded-lg bg-white border border-rose-300 text-rose-800 text-xs font-semibold hover:bg-rose-50 transition-colors inline-flex items-center gap-1.5 cursor-pointer"
-                >
-                  <span className="material-symbols-outlined text-sm">photo_library</span>
-                  <span>{t('watering.galleryBtn')}</span>
-                </button>
-              </div>
             </div>
           )}
-        </div>
-      )}
 
-      {/* Manual Plant Input Selector (Exacto al Calculador de riego) */}
-      <div className="bg-white rounded-2xl p-5 border border-[#e1e3e4] space-y-4">
-        <div className="space-y-2">
-          <label className="block text-xs font-bold uppercase tracking-wider text-[#526360]">
-            {t('watering.plantSpecies')}
-          </label>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            <input
-              type="text"
-              value={customPlant}
-              onChange={(e) => setCustomPlant(e.target.value)}
-              placeholder={t('watering.plantPlaceholder')}
-              className="w-full text-xs bg-[#f8fafb] border border-[#dce0e0] rounded-xl px-3.5 py-2.5 text-[#191c1d] focus:ring-2 focus:ring-[#006b5e]"
-            />
-            {recentScans.length > 0 && (
-              <select
-                value={selectedPlant}
-                onChange={(e) => {
-                  setSelectedPlant(e.target.value);
-                  setCustomPlant('');
-                }}
-                className="w-full text-xs bg-[#f8fafb] border border-[#dce0e0] rounded-xl px-3.5 py-2.5 text-[#191c1d] focus:ring-2 focus:ring-[#006b5e]"
-              >
-                <option value="">{t('watering.selectFromHistory')}</option>
-                {recentScans.map((s) => (
-                  <option key={s.id} value={s.name}>
-                    {getLocalizedSpeciesName(s.name, t)}
-                  </option>
-                ))}
-              </select>
-            )}
+          <div className="pt-1">
+            <button
+              id="health-analyze-btn"
+              disabled={isLoading || !photoPreview}
+              onClick={handleAnalyze}
+              className="w-full py-3.5 rounded-xl bg-gradient-to-r from-rose-600 to-red-700 text-white text-xs font-bold hover:shadow-md active:scale-95 transition-all disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer"
+            >
+              {isLoading ? (
+                <>
+                  <span className="material-symbols-outlined animate-spin text-lg">
+                    progress_activity
+                  </span>
+                  <span>{t('health.analyzing')}</span>
+                </>
+              ) : (
+                <>
+                  <span className="material-symbols-outlined text-base">health_and_safety</span>
+                  <span>{t('health.analyzeBtn')}</span>
+                </>
+              )}
+            </button>
           </div>
         </div>
-
-        <div className="pt-2">
-          <button
-            id="health-analyze-btn"
-            disabled={isLoading || (!photoPreview && !effectivePlantName)}
-            onClick={handleCalculateManual}
-            className="w-full py-3 rounded-xl bg-gradient-to-r from-rose-600 to-red-700 text-white text-xs font-bold hover:shadow-md active:scale-95 transition-all disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer"
-          >
-            {isLoading ? (
-              <>
-                <span className="material-symbols-outlined animate-spin text-lg">
-                  progress_activity
-                </span>
-                <span>{t('health.analyzing')}</span>
-              </>
-            ) : (
-              <>
-                <span className="material-symbols-outlined text-base">health_and_safety</span>
-                <span>{t('health.analyzeBtn')}</span>
-              </>
-            )}
-          </button>
-        </div>
-      </div>
+      )}
 
       {/* Loading */}
       {isLoading && (
@@ -366,7 +303,7 @@ export const PlantHealthView: React.FC<PlantHealthViewProps> = ({
           </div>
           <div className="pt-1">
             <button
-              onClick={handleCalculateManual}
+              onClick={handleAnalyze}
               className="px-3 py-1.5 bg-rose-600 text-white rounded-lg font-semibold hover:bg-rose-700 transition-colors inline-flex items-center gap-1.5 cursor-pointer"
             >
               <span className="material-symbols-outlined text-sm">refresh</span>
@@ -400,7 +337,7 @@ export const PlantHealthView: React.FC<PlantHealthViewProps> = ({
               </div>
               <div className="min-w-0">
                 <h3 className="text-sm font-bold text-[#191c1d] dark:text-white truncate">
-                  {calculatedPlantName || effectivePlantName || t('health.title')}
+                  {calculatedPlantName || t('health.title')}
                 </h3>
                 <p className="text-[11px] text-[#526360] dark:text-gray-400 truncate">
                   {t('health.desc')}
@@ -415,7 +352,7 @@ export const PlantHealthView: React.FC<PlantHealthViewProps> = ({
                   {t('watering.plantSpecies') || 'PLANTA'}
                 </span>
                 <p className="text-lg sm:text-xl font-bold text-[#191c1d] dark:text-white capitalize">
-                  {result.plantName || calculatedPlantName || effectivePlantName || t('health.title')}
+                  {result.plantName || calculatedPlantName || t('health.title')}
                 </p>
               </div>
 
