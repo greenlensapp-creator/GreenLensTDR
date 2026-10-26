@@ -35,6 +35,8 @@ export async function processAndCompressImage(file: File, maxSize = 400): Promis
           return;
         }
 
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillRect(0, 0, width, height);
         ctx.drawImage(img, 0, 0, width, height);
 
         const dataUrl = canvas.toDataURL('image/jpeg', 0.85);

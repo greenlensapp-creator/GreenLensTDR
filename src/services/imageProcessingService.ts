@@ -44,6 +44,8 @@ export async function processImageFile(
             resolve(fileOrBlob);
             return;
           }
+          ctx.fillStyle = '#FFFFFF';
+          ctx.fillRect(0, 0, targetWidth, targetHeight);
           ctx.imageSmoothingEnabled = true;
           ctx.imageSmoothingQuality = 'high';
           ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
@@ -99,7 +101,9 @@ export async function processImageFile(
             return;
           }
 
-          // Dibujar con suavizado
+          // Dibujar con fondo blanco y suavizado
+          ctx.fillStyle = '#FFFFFF';
+          ctx.fillRect(0, 0, targetWidth, targetHeight);
           ctx.imageSmoothingEnabled = true;
           ctx.imageSmoothingQuality = 'high';
           ctx.drawImage(img, 0, 0, targetWidth, targetHeight);

@@ -248,6 +248,13 @@ export const CameraScanView: React.FC<CameraScanViewProps> = ({
     setIsCapturing(true);
 
     const video = videoRef.current;
+    if (video.readyState < 2 || video.videoWidth <= 0 || video.videoHeight <= 0) {
+      console.warn('[CAMERA_CAPTURE] El flujo de vídeo no está listo todavía para capturar');
+      setIsCapturing(false);
+      isCapturingRef.current = false;
+      return;
+    }
+
     console.log('[CAMERA_CAPTURE] Disparador pulsado', {
       videoWidth: video.videoWidth,
       videoHeight: video.videoHeight,
@@ -257,8 +264,8 @@ export const CameraScanView: React.FC<CameraScanViewProps> = ({
 
     try {
       const canvas = canvasRef.current || document.createElement('canvas');
-      const width = video.videoWidth > 0 ? video.videoWidth : 1280;
-      const height = video.videoHeight > 0 ? video.videoHeight : 720;
+      const width = video.videoWidth;
+      const height = video.videoHeight;
       canvas.width = width;
       canvas.height = height;
       const ctx = canvas.getContext('2d');
@@ -269,6 +276,8 @@ export const CameraScanView: React.FC<CameraScanViewProps> = ({
         isCapturingRef.current = false;
         return;
       }
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fillRect(0, 0, width, height);
       ctx.drawImage(video, 0, 0, width, height);
       const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
 

@@ -52,6 +52,8 @@ export async function optimizeImageForAi(base64Data: string, maxDimension: numbe
           return;
         }
 
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillRect(0, 0, width, height);
         ctx.drawImage(img, 0, 0, width, height);
         const optimized = canvas.toDataURL('image/jpeg', 0.80);
         resolve(optimized);
