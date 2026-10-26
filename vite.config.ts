@@ -6,7 +6,7 @@ import {defineConfig} from 'vite';
 export default defineConfig(() => {
   const isNetlify = process.env.NETLIFY === 'true';
   const isGitHubPages = process.env.GITHUB_ACTIONS === 'true' || process.env.GITHUB_PAGES === 'true';
-  const base = process.env.VITE_BASE || (isGitHubPages ? '/Proyecto-GreenLens-TDR/' : isNetlify ? '/' : './');
+  const base = process.env.VITE_BASE || (isGitHubPages ? '/GreenLensTDR/' : isNetlify ? '/' : './');
 
   return {
     base,
