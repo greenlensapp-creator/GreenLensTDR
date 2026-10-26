@@ -253,14 +253,6 @@ export interface PlantHealthResponse {
   recommendations?: string[];
 }
 
-export interface LightMeterResponse {
-  detectedLevel: 'Muy baja' | 'Baja' | 'Media' | 'Alta' | 'Muy alta' | string;
-  isAdequate: boolean;
-  adequacyStatus: string;
-  recommendedLightType: string;
-  locationAdvice: string;
-  recommendations: string[];
-}
 
 export interface ImageValidationResult {
   isValid: boolean;

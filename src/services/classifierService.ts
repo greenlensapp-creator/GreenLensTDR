@@ -6,7 +6,7 @@
  * CÁMARA / GALERÍA -> OPTIMIZACIÓN IMAGEN -> BACKEND (/api/identify-plant) -> RESULTADO ESTRUCTURADO
  */
 
-import { ClassificationResult, PredictionResult, PlantInfo, LanguageCode } from '../types';
+import { ClassificationResult, PredictionResult, PlantInfo, LanguageCode, PlantCareInfo } from '../types';
 import { postToApi, ApiError } from './apiClient';
 
 /**

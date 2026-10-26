@@ -626,11 +626,11 @@ export function selectGroqModel(options: SelectModelOptions): string | null {
 
     const priority = (id: string) => {
       const lower = id.toLowerCase();
-      if (lower.includes('gpt-oss-20b')) return 100;
-      if (lower.includes('gpt-oss-120b')) return 90;
+      if (lower.includes('gpt-oss-120b')) return 100;
+      if (lower.includes('gpt-oss-20b')) return 90;
+      if (lower.includes('qwen3.8')) return 85;
       if (lower.includes('safeguard-20b')) return 80;
       if (lower.includes('minimax')) return 70;
-      if (lower.includes('qwen3.8')) return 60;
       return 1;
     };
     return priority(b.id) - priority(a.id);
@@ -918,12 +918,54 @@ export function extractAndParseJson(rawContent: string): any {
     } catch {}
   }
 
+  // 6. Reparación heurística de JSON incompleto o truncado por tokens
+  const repaired = repairIncompleteJson(text);
+  if (repaired && typeof repaired === 'object' && Object.keys(repaired).length > 0) {
+    return repaired;
+  }
+
   throw new BotanyAiError(
     'INVALID_JSON_RESPONSE',
     'El modelo devolvió una respuesta que no pudo ser procesada como JSON válido.',
     502,
     { rawPreview: text.slice(0, 300) }
   );
+}
+
+/**
+ * Repara estructuras JSON incompletas o truncadas antes de cerrar comillas o llaves
+ */
+function repairIncompleteJson(text: string): any {
+  if (!text || typeof text !== 'string') return null;
+  let cleaned = text
+    .replace(/<think>[\s\S]*?<\/think>/gi, '')
+    .replace(/<\/?(?:assistant|think|system|user)[^>]*>/gi, '')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/\/\/[^\n\r]*/g, '')
+    .trim();
+
+  const firstBrace = cleaned.indexOf('{');
+  if (firstBrace === -1) return null;
+  let candidate = cleaned.slice(firstBrace);
+
+  candidate = candidate.replace(/,\s*"[^"]*":\s*$/, '');
+  candidate = candidate.replace(/,\s*$/, '');
+
+  const quoteCount = (candidate.match(/(?<!\\)"/g) || []).length;
+  if (quoteCount % 2 !== 0) {
+    candidate += '"';
+  }
+
+  const openBraces = (candidate.match(/{/g) || []).length;
+  const closeBraces = (candidate.match(/}/g) || []).length;
+  for (let i = 0; i < openBraces - closeBraces; i++) {
+    candidate += '}';
+  }
+
+  try {
+    return JSON.parse(candidate);
+  } catch {}
+  return null;
 }
 
 /**
@@ -1237,6 +1279,7 @@ CRITICAL DIAGNOSTIC & TOKEN-EFFICIENCY RULES:
       const system = `Botanical light requirements expert for GreenLens. Language: ${targetLangName}.
 CRITICAL BOTANICAL RULES:
 - Identify or use the plant species to determine its optimal light requirements.
+- Keep all values brief and concise (recommendation must be one short sentence under 15 words).
 - If the input/photo corresponds to an identifiable plant, respond ONLY with a compact JSON:
 {
   "isPlant": true,
@@ -1320,8 +1363,13 @@ async function sendSingleGroqRequest(
     response_format: { type: 'json_object' }
   };
 
+  const idLower = model.toLowerCase();
+  if (idLower.includes('gpt-oss') || idLower.includes('qwen')) {
+    requestBody.reasoning_effort = 'low';
+  }
+
   try {
-    const response = await fetch(endpoint, {
+    let response = await fetch(endpoint, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -1331,6 +1379,28 @@ async function sendSingleGroqRequest(
       body: JSON.stringify(requestBody),
       signal: controller.signal
     });
+
+    if (!response.ok && requestBody.reasoning_effort) {
+      let errCheck = '';
+      try {
+        const cloned = response.clone();
+        const j = await cloned.json();
+        errCheck = j?.error?.message || '';
+      } catch {}
+      if (errCheck.includes('reasoning_effort')) {
+        delete requestBody.reasoning_effort;
+        response = await fetch(endpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${apiKey}`,
+            'User-Agent': 'GreenLens-App/2.0'
+          },
+          body: JSON.stringify(requestBody),
+          signal: controller.signal
+        });
+      }
+    }
 
     clearTimeout(timeoutId);
 
@@ -1352,7 +1422,7 @@ async function sendSingleGroqRequest(
       }
 
       // Si Groq rechazó por json_validate_failed pero devolvió failed_generation, intentamos recuperar el JSON generado
-      if ((errorCode === 'json_validate_failed' || errorDetail.includes('json_validate_failed') || errorDetail.includes('Failed to validate JSON')) && failedGeneration) {
+      if ((errorCode === 'json_validate_failed' || errorDetail.includes('json_validate_failed') || errorDetail.includes('Failed to validate JSON') || errorDetail.includes('Failed to generate JSON')) && failedGeneration && !failedGeneration.includes('max completion tokens')) {
         try {
           const recovered = extractAndParseJson(failedGeneration);
           if (recovered && typeof recovered === 'object' && Object.keys(recovered).length > 0) {
@@ -1660,6 +1730,21 @@ export async function executeGroqApiCall<T>(
         attempts++;
 
         const lowerMsg = (err.message || '').toLowerCase();
+        const rawErrStr = (typeof err.details?.rawError === 'string' ? err.details.rawError : JSON.stringify(err.details || {})).toLowerCase();
+        const isMaxTokensError = lowerMsg.includes('max completion tokens') || 
+                                 rawErrStr.includes('max completion tokens') ||
+                                 lowerMsg.includes('failed to generate json') ||
+                                 rawErrStr.includes('failed to generate json') ||
+                                 lowerMsg.includes('failed to validate json') ||
+                                 rawErrStr.includes('failed to validate json');
+
+        // Si falló por tokens de compleción o validación JSON en Groq, reintentar con maxTokens ampliado
+        if (isMaxTokensError && attempts < maxAttempts) {
+          console.warn(`[Groq Token Guard] Tokens insuficientes o validación JSON en modelo ${candidateModel}. Incrementando maxTokens y reintentando...`);
+          maxTokens = Math.min(1200, maxTokens + 250);
+          continue;
+        }
+
         const isContextLengthError = lowerMsg.includes('context_length_exceeded') || 
                                      lowerMsg.includes('context length exceeded') ||
                                      lowerMsg.includes('reduce the length of') ||
@@ -1762,7 +1847,7 @@ export async function executeGroqApiCall<T>(
         }
 
         // Manejo de Modelo Decommissioned / deprecado / no soportado
-        if (err.code === 'GROQ_MODEL_DECOMMISSIONED' || err.statusCode === 400 || err.statusCode === 404) {
+        if (err.code === 'GROQ_MODEL_DECOMMISSIONED' || err.statusCode === 404) {
           console.warn(`[Groq] Model ${candidateModel} is unavailable. Marking as deprecated and rotating...`);
           DEPRECATED_GROQ_MODELS.add(candidateModel);
           continue;
@@ -1824,7 +1909,7 @@ export async function handleIdentifyPlant(
     payload: { imageBase64 }
   };
 
-  return await executeGroqApiCall(request, clientKey, 220);
+  return await executeGroqApiCall(request, clientKey, 650);
 }
 
 export async function handleIdentifyInfo(
@@ -1909,7 +1994,7 @@ export async function handleConditions(
     payload: params
   };
 
-  const rawResult = await executeGroqApiCall<any>(request, clientKey, 320);
+  const rawResult = await executeGroqApiCall<any>(request, clientKey, 400);
 
   const isPlant = rawResult?.isPlant !== false;
   const plantName = rawResult?.plantName || params?.plantName || (isPlant ? 'Planta' : 'No se ha identificado ninguna planta');
@@ -1947,7 +2032,7 @@ export async function handlePlantHealth(
     payload: params
   };
 
-  const rawResult = await executeGroqApiCall<any>(request, clientKey, 260);
+  const rawResult = await executeGroqApiCall<any>(request, clientKey, 400);
 
   const isPlant = rawResult?.isPlant !== false;
   const plantName = rawResult?.plantName || params?.plantName || (isPlant ? 'Planta' : 'No se ha identificado ninguna planta');
@@ -1983,7 +2068,7 @@ export async function handleLightMeter(
     payload: params
   };
 
-  const rawResult = await executeGroqApiCall<any>(request, clientKey, 220);
+  const rawResult = await executeGroqApiCall<any>(request, clientKey, 400);
 
   const isPlant = rawResult?.isPlant !== false;
   const plantName = rawResult?.plantName || params?.plantName || (isPlant ? 'Planta' : 'No se ha identificado ninguna planta');

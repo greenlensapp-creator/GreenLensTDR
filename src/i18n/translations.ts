@@ -293,7 +293,7 @@ export const translations = {
     // Ideal Conditions
     'conditions.photoTitle': 'Fotografía tu planta o el entorno',
     'conditions.photoDesc': 'Analiza si la temperatura, humedad y luz actuales son idóneas para el desarrollo de la planta.',
-    'conditions.plantSpecies': 'Especie de planta (Opcional si hay foto)',
+    'conditions.plantSpecies': 'Especie de planta',
     'conditions.plantPlaceholder': 'Ej: Ficus lyrata, Orquídea...',
     'conditions.selectFromHistory': 'Seleccionar del historial...',
     'conditions.hideEnvSettings': 'Ocultar valores de temperatura y humedad',
@@ -353,7 +353,7 @@ export const translations = {
     // Watering Calculator
     'watering.photoTitle': 'Fotografía tu planta o selecciona de la galería',
     'watering.photoDesc': 'Calcula con precisión cuándo y cuánto regar tu planta analizando su tamaño y aspecto actual.',
-    'watering.plantSpecies': 'Especie de planta (Opcional si hay foto)',
+    'watering.plantSpecies': 'Especie de planta',
     'watering.plantPlaceholder': 'Ej: Monstera deliciosa, Pothos...',
     'watering.selectFromHistory': 'Seleccionar del historial...',
     'watering.hideSettings': 'Ocultar configuración de maceta y entorno',
@@ -927,7 +927,7 @@ export const translations = {
     // Ideal Conditions
     'conditions.photoTitle': 'Fotografia la teva planta o l\'entorn',
     'conditions.photoDesc': 'Analitza si la temperatura, humitat i llum actuals són idònies per al desenvolupament de la planta.',
-    'conditions.plantSpecies': 'Espècie de planta (Opcional si hi ha foto)',
+    'conditions.plantSpecies': 'Espècie de planta',
     'conditions.plantPlaceholder': 'Ex: Ficus lyrata, Orquídia...',
     'conditions.selectFromHistory': 'Seleccionar de l\'historial...',
     'conditions.hideEnvSettings': 'Amagar valors de temperatura i humitat',
@@ -987,7 +987,7 @@ export const translations = {
     // Watering Calculator
     'watering.photoTitle': 'Fotografia la teva planta o selecciona de la galeria',
     'watering.photoDesc': 'Calcula amb precisió quan i quant regar la teva planta analitzant la seva mida i aspecte actual.',
-    'watering.plantSpecies': 'Espècie de planta (Opcional si hi ha foto)',
+    'watering.plantSpecies': 'Espècie de planta',
     'watering.plantPlaceholder': 'Ex: Monstera deliciosa, Pothos...',
     'watering.selectFromHistory': 'Seleccionar de l\'historial...',
     'watering.hideSettings': 'Amagar configuració de test i entorn',
@@ -1561,7 +1561,7 @@ export const translations = {
     // Ideal Conditions
     'conditions.photoTitle': 'Photograph your plant or its environment',
     'conditions.photoDesc': 'Analyze if current temperature, humidity, and light are ideal for plant development.',
-    'conditions.plantSpecies': 'Plant species (Optional if photo provided)',
+    'conditions.plantSpecies': 'Plant species',
     'conditions.plantPlaceholder': 'E.g.: Ficus lyrata, Orchid...',
     'conditions.selectFromHistory': 'Select from history...',
     'conditions.hideEnvSettings': 'Hide temperature and humidity values',
@@ -1621,7 +1621,7 @@ export const translations = {
     // Watering Calculator
     'watering.photoTitle': 'Photograph your plant or select from gallery',
     'watering.photoDesc': 'Calculate precisely when and how much to water your plant by analyzing its size and current appearance.',
-    'watering.plantSpecies': 'Plant species (Optional if photo provided)',
+    'watering.plantSpecies': 'Plant species',
     'watering.plantPlaceholder': 'E.g.: Monstera deliciosa, Pothos...',
     'watering.selectFromHistory': 'Select from history...',
     'watering.hideSettings': 'Hide pot and environment settings',
@@ -2195,7 +2195,7 @@ export const translations = {
     // Ideal Conditions
     'conditions.photoTitle': 'التقط صورة لنباتك أو بيئته',
     'conditions.photoDesc': 'حلل ما إذا كانت درجة الحرارة والرطوبة والضوء الحالية مثالية لنمو النبات.',
-    'conditions.plantSpecies': 'نوع النبات (اختياري في حال وجود صورة)',
+    'conditions.plantSpecies': 'نوع النبات',
     'conditions.plantPlaceholder': 'مثال: فيكس ليراتا، أوركيد...',
     'conditions.selectFromHistory': 'اختر من السجل...',
     'conditions.hideEnvSettings': 'إخفاء قيم درجة الحرارة والرطوبة',
@@ -2255,7 +2255,7 @@ export const translations = {
     // Watering Calculator
     'watering.photoTitle': 'التقط صورة لنباتك أو اختر من المعرض',
     'watering.photoDesc': 'احسب بدقة متى وكمية ري نباتك من خلال تحليل حجمه ومظهره الحالي.',
-    'watering.plantSpecies': 'نوع النبات (اختياري في حال وجود صورة)',
+    'watering.plantSpecies': 'نوع النبات',
     'watering.plantPlaceholder': 'مثال: مونستيرا، بوتس...',
     'watering.selectFromHistory': 'اختر من السجل...',
     'watering.hideSettings': 'إخفاء إعدادات الأصيص والبيئة',

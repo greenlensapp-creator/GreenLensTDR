@@ -411,7 +411,7 @@ export const IdealConditionsView: React.FC<IdealConditionsViewProps> = ({
               {/* PLANTA */}
               <div className="bg-[#f8fafb] dark:bg-white/5 border border-[#e1e3e4] dark:border-white/10 rounded-2xl p-4 space-y-1">
                 <span className="block text-[10px] font-extrabold uppercase tracking-wider text-[#526360] dark:text-gray-400">
-                  {t('watering.plantSpecies') || 'PLANTA'}
+                  {t('light.plantSpecies') || 'PLANTA'}
                 </span>
                 <p className="text-lg sm:text-xl font-bold text-[#191c1d] dark:text-white capitalize">
                   {result.plantName || calculatedPlantName || effectivePlantName || t('conditions.title')}
