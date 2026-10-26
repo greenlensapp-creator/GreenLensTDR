@@ -29,14 +29,24 @@ jobs:
         with:
           node-version: 22
 
+      - name: Setup GitHub Pages
+        uses: actions/configure-pages@v5
+
       - name: Install dependencies
         run: npm install --legacy-peer-deps --no-audit --no-fund
 
       - name: Build for GitHub Pages
         run: npm run build:gh-pages
 
-      - name: Setup GitHub Pages
-        uses: actions/configure-pages@v5
+      - name: Verify production build output
+        run: |
+          echo "Checking dist/index.html..."
+          test -f dist/index.html || { echo "ERROR: dist/index.html does not exist!"; exit 1; }
+          if grep -q 'src="/src/main.tsx"' dist/index.html; then
+            echo "ERROR: dist/index.html still references development file /src/main.tsx!"
+            exit 1
+          fi
+          echo "Verification passed: dist/index.html is production-ready."
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
